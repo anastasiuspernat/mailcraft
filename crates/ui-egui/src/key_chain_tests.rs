@@ -854,6 +854,8 @@ fn escape_after_a_click_on_the_main_list_is_the_main_windows() {
 #[test]
 fn a_click_on_reminders_leaves_the_keys_where_they_were() {
     let mut h = testing::window("view.mail");
+    // The reminders window, as View › Reminders opens it (it never comes up by itself).
+    run(&mut h, "view.reminders", json!({}));
     h.run_steps(4);
     let reminders = crate::reminders::embedded_layer();
     assert!(h.ctx.memory(|m| m.areas().is_visible(&reminders)), "a reminder is showing");

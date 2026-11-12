@@ -1,0 +1,50 @@
+[package]
+name = "mailcraft-ios"
+description = "MailCraft on iPad: the same egui window as the desktop app, on iPadOS (winit and wgpu on Metal)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mailcraft-ios"
+path = "src/main.rs"
+
+[dependencies]
+mailcraft-engine = { workspace = true }
+mailcraft-ui-egui = { workspace = true }
+mailcraft-model = { workspace = true }
+mailcraft-time = { workspace = true }
+egui = { workspace = true }
+log = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+# Send/Receive and the account checks, on background threads (as the desktop host does).
+mailcraft-net = { workspace = true }
+mailcraft-apple-bridge = { workspace = true }
+# The smart Inbox's prompts and answer reading (no llama.cpp: its default features are none).
+mailcraft-ai = { workspace = true }
+# The iPad's keychain, through the desktop's credential-store module (`../mailcraft/src/secrets.rs`):
+# keyring-core's API over the data-protection keychain (MIT OR Apache-2.0, as on the Mac).
+keyring-core = "1"
+apple-native-keyring-store = { version = "1", features = ["protected"] }
+# wgpu on Metal; no accesskit (no iOS adapter yet), no clipboard crate (none for iOS).
+eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
+# Reminders and new mail through iPadOS's notifications (`notifications.rs`), through the generated
+# bindings' safe calls only: the same crates, versions and features as the Mac app's.
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSError", "NSString"] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "UNUserNotificationCenter",
+    "UNNotificationContent",
+    "UNNotificationRequest",
+    "UNNotificationSound",
+    "UNNotificationTrigger",
+] }

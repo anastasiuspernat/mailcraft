@@ -113,6 +113,24 @@ pub fn grammar(kind: JobKind) -> String {
     }
 }
 
+/// The shape of `kind`'s answer in words, for a model that can't be held to [`grammar`] (Apple's
+/// on-device model on iPad): added to the question, the answer then read by [`parse`] and
+/// checked like any other.
+pub fn json_shape(kind: JobKind) -> &'static str {
+    match kind {
+        JobKind::Classify => {
+            "Answer with one JSON object and nothing else: {\"category\": \"primary\"|\"transactions\"|\"updates\"|\"promotions\", \"priority\": true|false}"
+        }
+        JobKind::Summarize => {
+            "Answer with one JSON object and nothing else: {\"category\": \"primary\"|\"transactions\"|\"updates\"|\"promotions\", \"priority\": true|false, \"summary\": \"…\", \"actions\": [\"…\"], \"due\": \"YYYY-MM-DD\" or null}"
+        }
+        JobKind::SummarizeThread => {
+            "Answer with one JSON object and nothing else: {\"summary\": \"…\", \"actions\": [\"…\"], \"due\": \"YYYY-MM-DD\" or null}"
+        }
+        JobKind::Embed | JobKind::EmbedQuery => "",
+    }
+}
+
 /// The most tokens the model may write for `kind`.
 pub fn max_tokens(kind: JobKind) -> usize {
     match kind {

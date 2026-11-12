@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! Reminders that fire: the system's notification for each ([`crate::alerts`]), and a small
 //! window listing the events whose reminder time has come, with Dismiss and Snooze, as the
-//! incumbent has. The window comes up by itself only for what no notification told of; a click
-//! on one, or View › Reminders, brings it up. What is due is the engine's answer
+//! incumbent has. The window never comes up by itself: a click on a notification, View ›
+//! Reminders, or the status bar's "n reminders due" (for what no notification could tell of)
+//! brings it up. What is due is the engine's answer
 //! (`view::due_reminders`); what was dismissed is kept with the window's settings, what was put
 //! off only for this run.
 
@@ -78,13 +79,18 @@ pub fn tick(app: &mut MailApp, ctx: &egui::Context) {
     // A desktop alert for each, in front or not ([`crate::alerts`]): the system's notifications
     // tell of them in place of the window. Where they can't, the window comes up, and the
     // taskbar or the Dock asks for attention.
+    // While the window is in front the system keeps an app's own banners to itself (macOS,
+    // iPadOS), so what falls due then is told of in the status bar too.
     if !fresh.is_empty() {
-        if crate::alerts::reminders_due(app, &fresh) {
+        let focused = ctx.input(|i| i.focused);
+        if crate::alerts::reminders_due(app, &fresh) && !focused {
             app.reminders.notified.extend(fresh.iter().map(key_of));
-        } else if !ctx.input(|i| i.focused) {
+        } else if !focused {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
         }
     }
+    // And what is still to come, handed to a system that shows it by itself (iPadOS).
+    crate::alerts::schedule_reminders(app);
     if !app.session.mailbox.events.is_empty() {
         ctx.request_repaint_after(std::time::Duration::from_millis(LOOK_EVERY as u64));
     }
@@ -139,10 +145,18 @@ pub fn snooze(app: &mut MailApp, one: Option<(u64, &str)>, minutes: u64) -> usiz
     n
 }
 
-/// Whether the window is up: the owner asked for it, or something is due that no notification
-/// told of.
+/// Whether the window is up: only when the owner asked for it (View › Reminders, a click on a
+/// reminder's notification, or the status bar's "n reminders due"). It never comes up by itself:
+/// a reminder is told of by the system's notification, and what no notification could tell of
+/// waits in the status bar ([`untold`]).
 pub(crate) fn shows(app: &MailApp) -> bool {
-    app.reminders.asked_for || app.reminders.showing.iter().any(|r| !app.reminders.notified.contains(&key_of(r)))
+    app.reminders.asked_for
+}
+
+/// How many reminders are due that no notification told of (the switch is off, or the system
+/// won't show MailCraft's): said in the status bar.
+pub(crate) fn untold(app: &MailApp) -> usize {
+    app.reminders.showing.iter().filter(|r| !app.reminders.notified.contains(&key_of(r))).count()
 }
 
 fn viewport() -> egui::ViewportId {
@@ -369,6 +383,8 @@ mod tests {
         let single = app.execute("calendar.new", json!({"title": "Dentist", "start": "2026-10-14T16:20", "reminder": 30})).unwrap();
         let single = single["id"].as_u64().unwrap();
         app.execute("calendar.select", json!({"id": null})).unwrap();
+        // The window, as View › Reminders opens it (it never comes up by itself).
+        app.execute("view.reminders", json!({})).unwrap();
         let ctx = egui::Context::default();
         let mut time = 0.0;
         let mut frame = |app: &mut MailApp, events: Vec<egui::Event>| {

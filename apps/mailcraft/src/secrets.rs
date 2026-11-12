@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: MailCraft contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! The operating system's credential store: Windows Credential Manager, the macOS keychain, and
-//! on Linux and FreeBSD the desktop's Secret Service (GNOME Keyring, KWallet…) over D-Bus.
+//! The operating system's credential store: Windows Credential Manager, the macOS keychain, the
+//! iPad's keychain (shared with `apps/mailcraft-ios`), and on Linux and FreeBSD the desktop's
+//! Secret Service (GNOME Keyring, KWallet…) over D-Bus.
 //!
 //! A password or a refresh token the owner asks to be remembered is kept here, encrypted by the
 //! system for this user, and nowhere else: never in the mailbox file, the settings or a log.
@@ -13,11 +14,11 @@ use mailcraft_ui_egui::SecretStore;
 
 /// The store on systems that have one.
 pub fn store() -> Option<std::sync::Arc<dyn SecretStore>> {
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
     {
         Some(std::sync::Arc::new(os::OsStore::default()))
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd")))]
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios")))]
     {
         None
     }
@@ -26,21 +27,30 @@ pub fn store() -> Option<std::sync::Arc<dyn SecretStore>> {
 /// Windows keeps at most 2560 bytes per credential (1280 UTF-16 units), and a refresh token can
 /// be longer, so a secret is kept in pieces: `<key>#n` holds how many, `<key>#0`… hold them.
 /// (The same on every system, so that what is kept looks alike everywhere.)
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", test)), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios", test)),
+    allow(dead_code)
+)]
 const PIECE: usize = 1000;
 /// More pieces than any secret needs; a count beyond it is damage, not a secret.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", test)), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios", test)),
+    allow(dead_code)
+)]
 const MAX_PIECES: usize = 16;
 
 /// `secret` cut at character boundaries into pieces of at most [`PIECE`] characters.
-#[cfg_attr(not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", test)), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios", test)),
+    allow(dead_code)
+)]
 fn pieces(secret: &str) -> Option<Vec<String>> {
     let chars: Vec<char> = secret.chars().collect();
     let pieces: Vec<String> = chars.chunks(PIECE).map(|c| c.iter().collect()).collect();
     (pieces.len() <= MAX_PIECES).then_some(pieces)
 }
 
-#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
 mod os {
     use std::sync::{Arc, Mutex};
 
@@ -66,6 +76,9 @@ mod os {
         let store: Arc<CredentialStore> = windows_native_keyring_store::Store::new()?;
         #[cfg(target_os = "macos")]
         let store: Arc<CredentialStore> = apple_native_keyring_store::keychain::Store::new()?;
+        // The iPad's keychain (`apps/mailcraft-ios`, which shares this file).
+        #[cfg(target_os = "ios")]
+        let store: Arc<CredentialStore> = apple_native_keyring_store::protected::Store::new()?;
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         let store: Arc<CredentialStore> = zbus_secret_service_keyring_store::Store::new()?;
         Ok(store)
@@ -233,7 +246,7 @@ mod tests {
     /// What each of the store's complaints means for the owner, without a store to complain:
     /// only a store that can't be reached or stays locked is trouble worth telling.
     #[test]
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
     fn only_a_store_that_cant_be_used_is_trouble() {
         use mailcraft_ui_egui::StoreTrouble;
         use os::trouble;
@@ -252,7 +265,7 @@ mod tests {
 
     /// The store remembers the last trouble until it is taken, and then has nothing to say.
     #[test]
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
     fn trouble_is_taken_once() {
         use mailcraft_ui_egui::StoreTrouble;
         let store = os::OsStore::default();
@@ -269,7 +282,7 @@ mod tests {
     /// `<key>#n`, `<key>#0`…, so that what an earlier version remembered is found: in keyring's
     /// mock store, never the system's.
     #[test]
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
     fn entries_keep_the_names_earlier_versions_gave_them() {
         use std::sync::Arc;
 
@@ -306,7 +319,7 @@ mod tests {
     /// A store that couldn't be reached is tried again the next time, so that a Secret Service
     /// started after the window is used without starting the window again.
     #[test]
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
     fn a_store_that_couldnt_be_reached_is_tried_again() {
         use std::sync::Arc;
         use std::sync::atomic::{AtomicUsize, Ordering};
@@ -339,7 +352,7 @@ mod tests {
     /// store's trouble says so.
     #[test]
     #[ignore = "writes to (and cleans up in) this user's credential store"]
-    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd"))]
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "freebsd", target_os = "ios"))]
     fn the_systems_store_keeps_a_long_secret_and_lets_it_go() {
         let store = store().unwrap();
         let key = "refresh:store-test@mailcraft.example";

@@ -59,6 +59,8 @@ pub(crate) fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
         && let Some(h) = app.services.ai.as_ref()
     {
         match h.check_model(&prefs.model_path) {
+            // (A model that is no file, as Apple's on-device model on iPad, has no size.)
+            Ok(0) => dim(ui, tl!("Apple's on-device model, on this device.")),
             Ok(bytes) => dim(ui, &crate::i18n::fmt(tl!("A GGUF model, {size}."), &[("size", &mailcraft_model::size_label(bytes))])),
             Err(e) => {
                 ui.label(egui::RichText::new(crate::i18n::fmt(tl!("This file can't be used: {why}"), &[("why", &e)])).color(t.red));

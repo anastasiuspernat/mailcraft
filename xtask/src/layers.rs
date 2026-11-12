@@ -61,10 +61,13 @@ pub const TABLE: &[(&str, Class)] = &[
     ("mcp", Class::Layer(5)),
     ("ui-egui", Class::Layer(6)),
     ("testkit", Class::Testkit),
+    // Apple's frameworks without safe bindings (the sign-in sheet on iPad): nothing of ours below it.
+    ("apple-bridge", Class::Standalone),
     // apps and tooling
     ("mailcraft", Class::Exempt),
     ("cli", Class::Exempt),
     ("web", Class::Exempt),
+    ("ios", Class::Exempt),
     ("xtask", Class::Exempt),
 ];
 

@@ -3,10 +3,11 @@
 //! Desktop Alerts (R7.1): a notification MailCraft asks the operating system to show while it
 //! runs, for a reminder falling due and for new mail in an Inbox of the owner's own accounts.
 //!
-//! - A reminder's alert comes as it falls due, whether the window is in front or not, in place of
-//!   the reminders window ([`crate::reminders`]), which comes up by itself only for a reminder no
-//!   alert could tell of (the switch is off, or the system won't show them) and otherwise on a
-//!   click on the alert or View › Reminders; a reminder put off comes again when it is due again.
+//! - A reminder's alert comes as it falls due, whether the window is in front or not; the
+//!   reminders window ([`crate::reminders`]) never comes up by itself, only on a click on the
+//!   alert, View › Reminders, or the status bar's "n reminders due", which says what no alert could
+//!   tell of (the switch is off, or the system won't show them); a reminder put off comes again
+//!   when it is due again.
 //! - New mail is told of only while the window is not in front, once a Send/Receive is over: what
 //!   arrived is the engine's answer ([`mailcraft_engine::arrivals`]: never an account's first
 //!   download, mail a rule moved away, Junk E-mail or other folders, a shared mailbox, mail
@@ -131,6 +132,51 @@ pub trait AlertHost {
     fn clicked(&self) -> Vec<u64> {
         Vec::new()
     }
+    /// Hand the system the reminders still to come, to show by itself at their times even with
+    /// the program closed (iPadOS, which suspends a program in the background). Each call
+    /// replaces what was handed before; an empty list takes them all back. A host whose program
+    /// keeps running (the desktop) shows them as they fall due instead, and ignores this.
+    fn schedule(&self, _coming: &[Scheduled]) {}
+}
+
+/// A reminder handed to the system in advance ([`AlertHost::schedule`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scheduled {
+    /// The same for the same occurrence, from one list to the next.
+    pub id: String,
+    /// What it says, as a reminder's alert does ([`plan_reminders`]).
+    pub title: String,
+    pub body: String,
+    /// When it goes off, in seconds since 1970.
+    pub at: i64,
+}
+
+/// How far ahead reminders are handed to the system, and how many (iPadOS keeps 64).
+const SCHEDULE_DAYS: i64 = 14;
+const SCHEDULE_MOST: usize = 60;
+
+/// Hand the system the reminders still to come, when they changed since the last time: none
+/// while the switch is off; not those the owner dismissed.
+pub fn schedule_reminders(app: &mut MailApp) {
+    let Some(host) = &app.services.alert else { return };
+    let coming: Vec<Scheduled> = if app.ui.alert_reminders {
+        let twelve = app.session.prefs.twelve_hour;
+        mailcraft_engine::cmd::view::upcoming_reminders(&app.session, app.session.local_now(), SCHEDULE_DAYS, SCHEDULE_MOST)
+            .into_iter()
+            .filter(|(r, _)| !app.ui.dismissed_reminders.contains(&crate::reminders::key(r.event, &r.start.iso())))
+            .map(|(r, at)| {
+                let planned = plan_reminders(std::slice::from_ref(&r), true, twelve);
+                let (title, body) = planned.into_iter().next().map(|p| (p.title, p.body)).unwrap_or_default();
+                Scheduled { id: crate::reminders::key(r.event, &r.start.iso()), title, body, at }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if app.alerts.scheduled.as_ref() != Some(&coming) {
+        host.schedule(&coming);
+        app.alerts.scheduled = Some(coming);
+    }
 }
 
 /// The window's part.
@@ -144,6 +190,8 @@ pub struct State {
     idle_rev: u64,
     /// The mark a Send/Receive under way started from.
     run: Option<(InboxMark, Option<std::path::PathBuf>)>,
+    /// The reminders last handed to the system in advance.
+    scheduled: Option<Vec<Scheduled>>,
 }
 
 /// Text from a message (or an appointment) made fit for an alert, as a name is shown (#454): one

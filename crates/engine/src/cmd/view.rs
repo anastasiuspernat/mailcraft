@@ -414,6 +414,50 @@ pub fn due_reminders(s: &Session, now: mailcraft_time::DateTime) -> Vec<Reminder
     due
 }
 
+/// The reminders that will fall due from `now` (local time) within `days`, each with the moment it
+/// goes off (seconds since 1970): what a system that delivers notifications by itself, with the
+/// program closed (iPadOS), is handed in advance. Only the owner's own calendars; soonest first,
+/// at most `max`.
+pub fn upcoming_reminders(s: &Session, now: mailcraft_time::DateTime, days: i64, max: usize) -> Vec<(Reminder, i64)> {
+    let days = days.clamp(1, 60);
+    let (from, to) = (now.date, now.date.add_days(days.saturating_add(28)));
+    let here = super::remote::offset_of(s);
+    let instant = |wall: mailcraft_time::DateTime| mailcraft_model::zoned::instant_at(wall, &here);
+    let at = instant(now);
+    let until = at.saturating_add(days.saturating_mul(86_400));
+    let not_theirs: std::collections::HashSet<mailcraft_model::Id> =
+        s.mailbox.calendars.iter().filter(|c| !super::remote::is_own_calendar(&s.mailbox, c)).map(|c| c.id).collect();
+    let mut coming: Vec<(Reminder, i64)> = Vec::new();
+    for e in s.mailbox.events.values() {
+        let Some(ahead) = e.reminder_minutes else { continue };
+        if e.cancelled || not_theirs.contains(&e.calendar) {
+            continue;
+        }
+        for o in e.occurrences_in(from, to, &here) {
+            let fires = instant(o.start).saturating_sub(i64::from(ahead).saturating_mul(60));
+            if fires <= at || fires > until {
+                continue;
+            }
+            let minutes = i64::from(ahead);
+            coming.push((
+                Reminder {
+                    event: e.id,
+                    start: o.start,
+                    end: o.end,
+                    all_day: e.all_day,
+                    title: e.title.clone(),
+                    location: e.location.clone(),
+                    minutes,
+                },
+                fires,
+            ));
+        }
+    }
+    coming.sort_by_key(|(r, fires)| (*fires, r.start, r.event));
+    coming.truncate(max);
+    coming
+}
+
 fn reminders(s: &mut Session, _: &Value) -> CmdResult {
     let items: Vec<Value> = due_reminders(s, s.local_now())
         .into_iter()
@@ -421,3 +465,7 @@ fn reminders(s: &mut Session, _: &Value) -> CmdResult {
         .collect();
     Ok(json!({"reminders": items}))
 }
+
+#[cfg(test)]
+#[path = "view_reminders_tests.rs"]
+mod view_reminders_tests;
