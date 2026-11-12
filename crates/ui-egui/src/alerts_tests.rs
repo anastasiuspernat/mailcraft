@@ -345,7 +345,9 @@ fn reminders_told_of_by_a_notification_leave_the_window_down_until_asked_for() {
     app.autosave = false;
     let recorder = Recorder::default();
     app.services.alert = Some(Box::new(recorder.clone()));
-    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut app, ctx));
+    // MailCraft not the window in front: the notification tells of them.
+    let away = || egui::RawInput { focused: false, ..Default::default() };
+    pass(&ctx, away(), |ctx| crate::reminders::tick(&mut app, ctx));
     assert!(!app.reminders.showing.is_empty());
     assert!(!crate::reminders::shows(&app));
     // A click on the notification brings it up, Dismiss and Snooze in it.
@@ -357,21 +359,28 @@ fn reminders_told_of_by_a_notification_leave_the_window_down_until_asked_for() {
     crate::reminders::snooze(&mut app, None, 1);
     app.reminders.snoozed.values_mut().for_each(|until| *until = 0.0);
     app.reminders.looked = 0.0;
-    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut app, ctx));
+    pass(&ctx, away(), |ctx| crate::reminders::tick(&mut app, ctx));
     assert!(!crate::reminders::shows(&app));
-    // No notifications here (none at all, the switch off, or turned off in the system): the window.
+    assert_eq!(crate::reminders::untold(&app), 0);
+    // In front, where the system keeps an app's banners to itself: the status bar counts them.
+    let mut front = sample();
+    front.services.alert = Some(Box::new(Recorder::default()));
+    pass(&ctx, egui::RawInput { focused: true, ..Default::default() }, |ctx| crate::reminders::tick(&mut front, ctx));
+    assert!(!crate::reminders::shows(&front) && crate::reminders::untold(&front) > 0);
+    // No notifications here (none at all, the switch off, or turned off in the system): never the
+    // window by itself, but the status bar counts them.
     let mut none = sample();
     pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut none, ctx));
-    assert!(crate::reminders::shows(&none));
+    assert!(!crate::reminders::shows(&none) && crate::reminders::untold(&none) > 0);
     let mut off = sample();
     off.services.alert = Some(Box::new(Recorder::default()));
     off.execute("ui.desktopAlerts", json!({"reminders": false})).unwrap();
     pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut off, ctx));
-    assert!(crate::reminders::shows(&off));
+    assert!(!crate::reminders::shows(&off) && crate::reminders::untold(&off) > 0);
     let mut refused = sample();
     refused.services.alert = Some(Box::new(Recorder { trouble: Some(AlertTrouble::TurnedOff), ..Default::default() }));
     pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut refused, ctx));
-    assert!(crate::reminders::shows(&refused));
+    assert!(!crate::reminders::shows(&refused) && crate::reminders::untold(&refused) > 0);
 }
 
 /// One pass of a context with this input.

@@ -487,6 +487,16 @@ pub fn status_bar(app: &mut MailApp, ui: &mut Ui) {
                         st(ui, &tln!(open, "{n} open task", "{n} open tasks"), t.text_dim);
                     }
                 }
+                // Reminders due that no notification told of: here, never a window of their own.
+                let untold = crate::reminders::untold(app);
+                if untold > 0 {
+                    let text = tln!(untold, "🔔 {n} reminder due", "🔔 {n} reminders due");
+                    let b = ui.add(egui::Button::new(egui::RichText::new(text).font(regular(STATUS_TEXT)).color(t.accent_text)).frame(false));
+                    app.hit.add("statusReminders", 0, b.rect);
+                    if b.on_hover_text(tl!("Show the reminders that are due")).clicked() {
+                        app.reminders.asked_for = true;
+                    }
+                }
                 if let Some((msg, at)) = &app.status_msg
                     && crate::now_ms() - at < 6000.0
                 {

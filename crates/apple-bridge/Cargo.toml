@@ -1,0 +1,28 @@
+[package]
+name = "mailcraft-apple-bridge"
+description = "The one place MailCraft calls Apple's frameworks with unsafe code: Apple's sign-in sheet on iPad (and, later, Apple's on-device model through Swift). Everything else in the workspace forbids unsafe code."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Not the workspace's lints: `unsafe_code` is allowed here, and only here (the owner's decision,
+# 2026-11-11), for calls into Apple's frameworks that have no safe binding. Each unsafe block says
+# why it is sound. Everything else the workspace denies, this denies too.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+# `mailcraft_no_swift`: set by build.rs when the Swift part couldn't be built.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(mailcraft_no_swift)"] }
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
+dbg_macro = "warn"
+todo = "warn"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+# The same project's bindings as the rest of the Apple code (MIT, Zlib or Apache-2.0).
+objc2 = { version = "0.6", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSError", "NSString", "NSURL", "NSArray", "NSObject", "NSOperation"] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = ["std", "UIApplication", "UIWindow", "UIView", "UIResponder"] }
+objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASWebAuthenticationSession", "ASFoundation"] }
+block2 = { version = "0.6", default-features = false, features = ["std"] }

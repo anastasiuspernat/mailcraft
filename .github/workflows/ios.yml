@@ -1,0 +1,100 @@
+name: iPad
+
+# MailCraft for iPad (apps/mailcraft-ios): built with Xcode 26 (Apple's on-device model, which this
+# project's own Macs can't build), then signed and uploaded to TestFlight.
+#
+# Building and signing are separate jobs, as in package.yml: the job that compiles holds no
+# secret; the job that signs takes the app the build made, checks it against the digest that job
+# gave (packaging/ci/handoff.sh), and never runs cargo or anything built. Without the signing
+# secrets the second job says which are missing and stops without failing.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mailcraft-ios/**'
+      - 'crates/apple-bridge/**'
+      - 'packaging/ios/**'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipad-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build for iPad
+    runs-on: macos-15
+    timeout-minutes: 90
+    outputs:
+      digest: ${{ steps.seal.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Use the newest Xcode 26
+        run: |
+          xcode=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -V | tail -1)
+          [ -n "$xcode" ] || { echo "::error::no Xcode 26 on this runner"; exit 1; }
+          echo "DEVELOPER_DIR=$xcode/Contents/Developer" >>"$GITHUB_ENV"
+          "$xcode/Contents/Developer/usr/bin/xcodebuild" -version
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.98.1
+          targets: aarch64-apple-ios
+      - name: Build MailCraft.app
+        env:
+          MAILCRAFT_IOS_BUILD: ${{ github.run_number }}
+          MAILCRAFT_GOOGLE_CLIENT_ID: ${{ secrets.MAILCRAFT_GOOGLE_CLIENT_ID }}
+          MAILCRAFT_GOOGLE_CLIENT_SECRET: ${{ secrets.MAILCRAFT_GOOGLE_CLIENT_SECRET }}
+        run: packaging/ios/build.sh --device
+      - name: Apple's on-device model is in the build
+        run: |
+          app=target/ios/aarch64-apple-ios/release/MailCraft.app
+          otool -L "$app/mailcraft-ios" | grep -q FoundationModels || { echo "::error::built without Foundation Models"; exit 1; }
+      - name: Hand the app on by digest
+        id: seal
+        run: |
+          mkdir -p handoff
+          cp -R target/ios/aarch64-apple-ios/release/MailCraft.app handoff/
+          digest=$(bash packaging/ci/handoff.sh seal handoff build-ipad)
+          echo "digest=$digest" >>"$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-ipad
+          path: handoff/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Signs what build made and uploads it to TestFlight. Never runs cargo or a built program.
+  testflight:
+    name: Sign and upload to TestFlight
+    needs: [build]
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      # The scripts come from this commit, not from the build job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-ipad
+          path: prebuilt
+      - name: The app is the one build made
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: bash packaging/ci/handoff.sh check prebuilt "build-ipad=$DIGEST"
+      - name: Sign and upload
+        env:
+          IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: bash packaging/ios/sign-and-upload.sh prebuilt/MailCraft.app

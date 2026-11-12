@@ -1170,6 +1170,11 @@ msgid "Anything still waiting to go to the server goes first: mail in the Outbox
 msgstr "Primero se envía todo lo que aún espera para ir al servidor: el correo de la Bandeja de salida y las marcas y movimientos hechos mientras estaba sin conexión. Si MailCraft no puede conectar con el servidor, el cambio espera hasta que pueda."
 
 #. interface
+#: crates/ui-egui/src/ai_options.rs
+msgid "Apple's on-device model, on this device."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/account_setup.rs
 #, fuzzy
 msgid "Application (client) ID"
@@ -10800,6 +10805,11 @@ msgid "Show the messages of this conversation"
 msgstr "Mostrar los mensajes de esta conversación"
 
 #. interface
+#: crates/ui-egui/src/chrome.rs
+msgid "Show the reminders that are due"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/reading/summary.rs
 msgid "Show the summary"
 msgstr ""
@@ -18256,6 +18266,13 @@ msgstr "«{subject}» era demasiado grande para descargarlo: solo está aquí su
 #, fuzzy
 msgid "“{subject}” wasn't found on its server, so it can't be forwarded as an attachment"
 msgstr "«{subject}» no se encontró en su servidor, así que no se puede reenviar como datos adjuntos"
+
+#. interface
+#: crates/ui-egui/src/chrome.rs
+msgid "🔔 {n} reminder due"
+msgid_plural "🔔 {n} reminders due"
+msgstr[0] ""
+msgstr[1] ""
 
 #~ msgid "Google Desktop Registration Secret"
 #~ msgstr "Secreto del registro de escritorio de Google"

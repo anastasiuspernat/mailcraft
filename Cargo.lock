@@ -2401,6 +2401,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "mailcraft-apple-bridge"
+version = "0.11.1"
+dependencies = [
+ "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-authentication-services",
+ "objc2-foundation 0.3.2",
+ "objc2-ui-kit 0.3.2",
+]
+
+[[package]]
 name = "mailcraft-charset"
 version = "0.11.1"
 dependencies = [
@@ -2510,6 +2521,29 @@ dependencies = [
  "mailcraft-model",
  "mailcraft-time",
  "proptest",
+]
+
+[[package]]
+name = "mailcraft-ios"
+version = "0.11.1"
+dependencies = [
+ "apple-native-keyring-store",
+ "block2 0.6.2",
+ "eframe",
+ "egui",
+ "keyring-core",
+ "log",
+ "mailcraft-ai",
+ "mailcraft-apple-bridge",
+ "mailcraft-engine",
+ "mailcraft-model",
+ "mailcraft-net",
+ "mailcraft-time",
+ "mailcraft-ui-egui",
+ "objc2 0.6.5",
+ "objc2-foundation 0.3.2",
+ "objc2-user-notifications 0.3.2",
+ "serde_json",
 ]
 
 [[package]]
@@ -3042,6 +3076,18 @@ dependencies = [
  "objc2 0.6.5",
  "objc2-core-foundation",
  "objc2-core-graphics",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-authentication-services"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee6d6f7dab884a28adaec1012eb3889257a49cc145724e35f93ece2d209f8b25"
+dependencies = [
+ "block2 0.6.2",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
  "objc2-foundation 0.3.2",
 ]
 

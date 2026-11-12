@@ -78,7 +78,7 @@ pub fn module_bar(app: &mut MailApp, ui: &mut Ui) {
                 // The module in view: a bar at the window's edge, and its icon in the accent.
                 let bar = Rect::from_min_size(pos2(r.min.x + 6.0, r.center().y - 16.0), vec2(2.0, 32.0));
                 ui.painter().rect_filled(bar, 1.0, t.accent);
-            } else if resp.hovered() {
+            } else if resp.hovered() && !ui.input(|i| i.has_touch_screen()) {
                 ui.painter().rect_filled(r.shrink(6.0), 4.0, if resp.is_pointer_button_down_on() { t.pressed } else { t.hover });
             }
             // One colour: the icons of the bar are line drawings, lit when theirs is the module in view.
@@ -207,6 +207,8 @@ fn highlight(r: Rect) -> Rect {
 fn heading(app: &mut MailApp, ui: &mut Ui, id: Id, name: &str, height: f32, text_y: f32, ruled: bool, movable: bool) -> bool {
     let t = Tokens::get(ui.ctx());
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+    // (Dragged up or down with a mouse; on a touch screen a swipe scrolls the pane.)
+    let movable = movable && !ui.input(|i| i.has_touch_screen());
     let resp = ui.interact(r, ui.scope_id().with(("heading", id)), if movable { Sense::click_and_drag() } else { Sense::click() });
     app.hit.add("folderHeading", id, r);
     if movable {
@@ -400,7 +402,7 @@ fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_chil
     if selected {
         ui.painter().rect_filled(row, 6.0, t.accent_soft);
         ui.painter().rect_filled(Rect::from_center_size(pos2(row.min.x + 1.5, row.center().y), vec2(3.0, 14.0)), 1.5, t.selection_edge);
-    } else if resp.hovered() {
+    } else if resp.hovered() && !ui.input(|i| i.has_touch_screen()) {
         // Quieter than on the ribbon: the pane is darker, and the selected row must stay the one that stands out.
         ui.painter().rect_filled(row, 6.0, t.hover_nav);
     }
@@ -533,7 +535,7 @@ fn gmail_row(app: &mut MailApp, ui: &mut Ui, inbox: Id, depth: usize, category: 
     if selected {
         ui.painter().rect_filled(row, 6.0, t.accent_soft);
         ui.painter().rect_filled(Rect::from_center_size(pos2(row.min.x + 1.5, row.center().y), vec2(3.0, 14.0)), 1.5, t.selection_edge);
-    } else if resp.hovered() {
+    } else if resp.hovered() && !ui.input(|i| i.has_touch_screen()) {
         ui.painter().rect_filled(row, 6.0, t.hover_nav);
     }
     // Reached with Tab or the arrow keys (Enter or Space shows it): where the keyboard is.

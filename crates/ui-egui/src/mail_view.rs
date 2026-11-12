@@ -992,7 +992,10 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
     let Some(m) = app.session.mailbox.messages.get(&row.id).cloned() else { return };
     // A message listed under two categories is two rows, each with ids of its own.
     let key = (row.id, row.copy);
-    let resp = ui.interact(rect, ui.scope_id().with(("msg", key)), Sense::click_and_drag());
+    // On a touch screen a swipe scrolls the list rather than dragging the row (a long press
+    // opens its menu, Move to among it); with a mouse a row is dragged to a folder.
+    let sense = if ui.input(|i| i.has_touch_screen()) { Sense::click() } else { Sense::click_and_drag() };
+    let resp = ui.interact(rect, ui.scope_id().with(("msg", key)), sense);
     app.hit.add("message", row.id, rect);
     let unread = row.unread > 0;
     // The strip down the left edge is a switch between read and unread. It sits on top of the
@@ -1023,7 +1026,10 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
     // Quick actions on the row under the pointer, at the right of the sender's line: flag (where
     // a flagged message wears its flag) and delete. Like the read switch they sit on top of the
     // row and leave the selection alone.
-    let over = ui.rect_contains_pointer(rect) && egui::DragAndDrop::payload::<MessageDrag>(ui.ctx()).is_none();
+    // On a touch screen there is no pointer resting over a row, only a finger passing by as the
+    // list scrolls: no quick actions there (the long press's menu has them), and no hover shade.
+    let touch = ui.input(|i| i.has_touch_screen());
+    let over = !touch && ui.rect_contains_pointer(rect) && egui::DragAndDrop::payload::<MessageDrag>(ui.ctx()).is_none();
     // Wide enough to hit without aiming, a gap between them, and short enough to stay off the
     // time on the subject's line.
     let flag_rect = Rect::from_center_size(pos2(rect.max.x - QUICK_TARGET.x / 2.0, line1), QUICK_TARGET);
@@ -1075,7 +1081,7 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         t.text_dim = white.gamma_multiply(0.82);
         t.border_strong = white.gamma_multiply(0.6);
     }
-    if !selected && (resp.hovered() || read_resp.hovered() || arrow.as_ref().is_some_and(egui::Response::hovered) || quick.is_some()) {
+    if !touch && !selected && (resp.hovered() || read_resp.hovered() || arrow.as_ref().is_some_and(egui::Response::hovered) || quick.is_some()) {
         // The pointer's shade goes over a flagged row's tint.
         p.rect_filled(card, 6.0, t.hover_subtle);
     }

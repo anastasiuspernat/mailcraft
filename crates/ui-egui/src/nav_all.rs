@@ -124,7 +124,7 @@ fn row(app: &mut MailApp, ui: &mut Ui, which: AllMailbox, count: Count, opened: 
     if selected {
         ui.painter().rect_filled(hl, 6.0, t.accent_soft);
         ui.painter().rect_filled(Rect::from_center_size(pos2(hl.min.x + 1.5, hl.center().y), vec2(3.0, 14.0)), 1.5, t.selection_edge);
-    } else if resp.hovered() {
+    } else if resp.hovered() && !ui.input(|i| i.has_touch_screen()) {
         ui.painter().rect_filled(hl, 6.0, t.hover_nav);
     }
     if resp.has_focus() {
