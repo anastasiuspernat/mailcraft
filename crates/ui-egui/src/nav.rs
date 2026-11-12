@@ -12,6 +12,9 @@ use mailcraft_model::{Folder, FolderKind, GmailCategory, Id, Mailbox};
 use serde_json::json;
 
 use crate::favorites_sync::Note;
+
+#[path = "nav_all.rs"]
+mod all_mailboxes;
 use crate::theme::{Tokens, bold, paint_clipped, regular};
 use crate::{MailApp, icons};
 
@@ -21,9 +24,12 @@ const RAIL_PITCH: f32 = 48.0;
 
 /// A folder's row.
 const ROW_H: f32 = 24.0;
+/// A row of All Inboxes and the rest, and of the accounts' folders under them: roomier, for their
+/// larger names.
+pub(super) const ALL_ROW_H: f32 = 32.0;
 /// Folder names and counts are 9 pt, the Favorites and account headings 11 pt.
 const NAME_SIZE: f32 = 12.0;
-const HEADING_SIZE: f32 = 14.667;
+pub(super) const HEADING_SIZE: f32 = 14.667;
 /// Where a top-level name starts, and how much further in each level under it starts. This and
 /// the distances below are from the pane's edges, the line down its left edge included.
 const NAME_LEFT: f32 = 22.0;
@@ -378,11 +384,18 @@ fn picked_in_list(ui: &Ui) -> bool {
 fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_children: bool, key: &str, count: Count, selected: bool) {
     // Under Favorites a shared mailbox's folder says whose it is (#70), and so does one whose name
     // another account's folder has too (two Inboxes); in its tree, its name.
-    let name = if key == "fav" { result_folder_label(&app.session.mailbox, f) } else { folder_name(f).to_string() };
+    // Under All Inboxes, All Drafts and All Sent, each account's folder is called by its account.
+    let name = match key {
+        "fav" => result_folder_label(&app.session.mailbox, f),
+        "all" => app.session.mailbox.account(f.account).map(|a| heading_name(app, a)).unwrap_or_else(|| folder_name(f).to_string()),
+        _ => folder_name(f).to_string(),
+    };
     let t = Tokens::get(ui.ctx());
-    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::hover());
+    let row_h = if key == "all" { ALL_ROW_H } else { ROW_H };
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::hover());
     let resp = ui.interact(r, ui.scope_id().with((key, f.id)), Sense::click());
-    app.hit.add("folder", f.id, r);
+    // (Under All Inboxes and the rest, an account's folder is a row of its own kind.)
+    app.hit.add(if key == "all" { "allMailboxFolder" } else { "folder" }, f.id, r);
     let row = highlight(r);
     if selected {
         ui.painter().rect_filled(row, 6.0, t.accent_soft);
@@ -416,7 +429,9 @@ fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_chil
         ui.painter().galley(pill.center() - galley.size() / 2.0, galley, ink);
         name_end = pill.min.x - 6.0;
     }
-    let font = if selected { bold(NAME_SIZE) } else { regular(NAME_SIZE) };
+    // Under All Inboxes and the rest, the accounts' names are as large as the headings.
+    let size = if key == "all" { HEADING_SIZE } else { NAME_SIZE };
+    let font = if selected { bold(size) } else { regular(size) };
     paint_clipped(
         ui.painter(),
         pos2(x + NAME_LEFT, y),
@@ -662,21 +677,10 @@ fn favorites_note(app: &mut MailApp, ui: &mut Ui, account: Id, note: &Note) {
     }
 }
 
-/// The pane as a sheet lying on the window: the panel colour with a line along its top and left,
-/// rounded where the two meet beside the module bar and under the ribbon.
+/// The pane as a sheet lying on the window: the panel colour, rounded at its top left beside the
+/// module bar and under the ribbon, without an outline.
 fn sheet(painter: &Painter, r: Rect, t: &Tokens) {
-    let radius = f32::from(SHEET_CORNER);
     painter.rect_filled(r, CornerRadius { nw: SHEET_CORNER, ne: 0, sw: 0, se: 0 }, t.panel);
-    // Up the left edge, round the corner, along the top: half a pixel in, so the line is crisp.
-    let (left, top) = (r.min.x + 0.5, r.min.y + 0.5);
-    let centre = pos2(left + radius, top + radius);
-    let mut line = vec![pos2(left, r.max.y)];
-    line.extend((0..=8).map(|i| {
-        let a = (180.0 + 90.0 * i as f32 / 8.0).to_radians();
-        pos2(centre.x + radius * a.cos(), centre.y + radius * a.sin())
-    }));
-    line.push(pos2(r.max.x, top));
-    painter.add(Shape::line(line, Stroke::new(1.0, t.border_strong)));
 }
 
 /// The top of the pane: the button that puts the pane away.
@@ -770,7 +774,9 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
             // they are tabs above the list instead (`view.gmailCategories`), the Inbox's is.
             let gmail_tabs = app.session.view.gmail_tabs;
             let gmail_now = mailcraft_engine::gmail::in_view(&app.session);
-            let current = if gmail_now.is_some() && !gmail_tabs { 0 } else { app.session.view.folder };
+            // (Nor while the list shows All Inboxes or another of every account's mail.)
+            let all_now = mailcraft_engine::all::in_view(&app.session).is_some();
+            let current = if (gmail_now.is_some() && !gmail_tabs) || all_now { 0 } else { app.session.view.folder };
             let gmail_current = app.session.view.folder;
             let among_favorites = !folded.contains(&FAVORITES) && favorites.iter().any(|f| f.id == current);
             let in_a_list = lists.iter().any(|(_, _, rows)| rows.iter().any(|(f, _, _)| f.id == current));
@@ -782,7 +788,9 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
             // The first heading sits right under the top of the pane; each later one starts a
             // new block, with a rule above it.
             let pane_top = ui.cursor().min.y;
-            let mut first = true;
+            // (All Inboxes and the rest, when they lead, are the first block.)
+            let leading = all_mailboxes::shown(app);
+            let mut first = !leading;
             let mut head = |app: &mut MailApp, ui: &mut Ui, id: Id, name: &str| {
                 if std::mem::take(&mut first) {
                     heading(app, ui, id, name, ROW_H, 7.5, false, movable.contains(&id))
@@ -790,6 +798,12 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
                     heading(app, ui, id, name, 2.0 * ROW_H, 34.5, true, movable.contains(&id))
                 }
             };
+            // All Inboxes, VIPs, Flagged, All Drafts and All Sent first, with no heading of their
+            // own: the Favorites' heading then has its rule above it.
+            if leading {
+                ui.add_space(4.0);
+                all_mailboxes::section(app, ui, &counts);
+            }
             if (!favorites.is_empty() || note.is_some()) && head(app, ui, FAVORITES, tl!("Favorites")) {
                 if let Some((account, note)) = &note {
                     favorites_note(app, ui, *account, note);

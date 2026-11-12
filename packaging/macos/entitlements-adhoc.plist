@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hardened-runtime entitlements for an ad-hoc signed build that carries the Vulkan loader and
+     MoltenVK in Contents/Frameworks (package.sh with the GPU model engine; no double hyphen may stand in an XML comment). Ad-hoc signatures have no team ID,
+     so library validation would refuse the bundled libraries that the app's own worker loads:
+     this exception is for ad-hoc builds only. A build signed with a real identity signs the
+     libraries with the same team and uses entitlements.plist, which has no exceptions. -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

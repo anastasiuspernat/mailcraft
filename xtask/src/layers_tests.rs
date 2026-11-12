@@ -159,3 +159,21 @@ fn metadata_parsing() {
     assert_eq!(doc.deps[2].kind, Dev);
     assert!(check(&g).is_empty());
 }
+
+#[test]
+fn the_model_runner_is_for_the_apps_alone() {
+    // The engine, the MCP server and the window must build for the browser: none may use it.
+    for krate in ["mailcraft-model", "mailcraft-engine", "mailcraft-mcp", "mailcraft-ui-egui", "mailcraft-net"] {
+        let v = check(&[c(krate, &[("mailcraft-ai", DepKind::Normal, true)]), c("mailcraft-ai", &[("mailcraft-model", DepKind::Normal, true)])]);
+        assert!(v.iter().any(|v| matches!(v, Violation::AppOnly { dep, .. } if dep == "mailcraft-ai")), "{krate}: {v:?}");
+    }
+    // The apps may, and it uses the model below it.
+    for app in ["mailcraft", "mailcraft-cli"] {
+        let v = check(&[
+            c(app, &[("mailcraft-ai", DepKind::Normal, true)]),
+            c("mailcraft-ai", &[("mailcraft-model", DepKind::Normal, true)]),
+            c("mailcraft-model", &[]),
+        ]);
+        assert!(v.is_empty(), "{app}: {v:?}");
+    }
+}

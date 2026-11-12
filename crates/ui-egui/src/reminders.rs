@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: MailCraft contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Reminders that fire: a small window listing the events whose reminder time has come, with
-//! Dismiss and Snooze, as the incumbent has. What is due is the engine's answer
+//! Reminders that fire: the system's notification for each ([`crate::alerts`]), and a small
+//! window listing the events whose reminder time has come, with Dismiss and Snooze, as the
+//! incumbent has. The window comes up by itself only for what no notification told of; a click
+//! on one, or View › Reminders, brings it up. What is due is the engine's answer
 //! (`view::due_reminders`); what was dismissed is kept with the window's settings, what was put
 //! off only for this run.
 
@@ -29,6 +31,9 @@ pub struct State {
     pub(crate) snoozed: HashMap<String, f64>,
     /// Reminders the owner has been told about (the taskbar is only asked for attention once).
     announced: HashSet<String>,
+    /// Reminders the system's notifications told of: the window doesn't come up by itself for
+    /// them.
+    pub(crate) notified: HashSet<String>,
     /// The owner asked for the window (View › Reminders Window): shown even with nothing due.
     pub(crate) asked_for: bool,
 }
@@ -70,11 +75,16 @@ pub fn tick(app: &mut MailApp, ctx: &egui::Context) {
             fresh.push(r.clone());
         }
     }
-    if !fresh.is_empty() && !ctx.input(|i| i.focused) {
-        ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+    // A desktop alert for each, in front or not ([`crate::alerts`]): the system's notifications
+    // tell of them in place of the window. Where they can't, the window comes up, and the
+    // taskbar or the Dock asks for attention.
+    if !fresh.is_empty() {
+        if crate::alerts::reminders_due(app, &fresh) {
+            app.reminders.notified.extend(fresh.iter().map(key_of));
+        } else if !ctx.input(|i| i.focused) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+        }
     }
-    // And a desktop alert for each, in front or not ([`crate::alerts`]).
-    crate::alerts::reminders_due(app, &fresh);
     if !app.session.mailbox.events.is_empty() {
         ctx.request_repaint_after(std::time::Duration::from_millis(LOOK_EVERY as u64));
     }
@@ -121,11 +131,18 @@ pub fn snooze(app: &mut MailApp, one: Option<(u64, &str)>, minutes: u64) -> usiz
     for k in keys {
         // Due again once the time is up: told of again then.
         app.reminders.announced.remove(&k);
+        app.reminders.notified.remove(&k);
         app.reminders.snoozed.insert(k, until);
     }
     refresh(app);
     app.reminders.asked_for = false;
     n
+}
+
+/// Whether the window is up: the owner asked for it, or something is due that no notification
+/// told of.
+pub(crate) fn shows(app: &MailApp) -> bool {
+    app.reminders.asked_for || app.reminders.showing.iter().any(|r| !app.reminders.notified.contains(&key_of(r)))
 }
 
 fn viewport() -> egui::ViewportId {
@@ -141,7 +158,7 @@ pub(crate) fn embedded_layer() -> egui::LayerId {
 /// can be put wherever the owner likes (where the system has no separate windows, as in a
 /// browser, a movable window inside the main one).
 pub fn show(app: &mut MailApp, ctx: &egui::Context) {
-    if app.reminders.showing.is_empty() && !app.reminders.asked_for {
+    if !shows(app) {
         return;
     }
     let t = Tokens::get(ctx);

@@ -17,6 +17,7 @@ mod contact;
 pub mod dav;
 mod ews_server;
 pub mod gmail;
+pub mod insight;
 mod jmap_server;
 mod junk;
 pub mod load_limit;
@@ -36,6 +37,7 @@ pub mod remote_tasks;
 pub mod rich;
 mod rule;
 pub mod search;
+pub mod sender_marks;
 pub mod sender_warnings;
 pub mod shown;
 pub mod signature;
@@ -56,14 +58,15 @@ pub use calendar::{
 pub use contact::{Contact, Labeled, PostalAddress};
 pub use ews_server::{EwsServer, is_exchange_online, is_microsoft_domain, is_within};
 pub use gmail::{GmailCategory, is_gmail_host};
+pub use insight::{CategorySource, InboxCategory, Insight, Summary};
 pub use jmap_server::JmapServer;
 pub use junk::{Added, JunkList, JunkLists, MAX_JUNK_ENTRIES, junk_entry, junk_key};
 pub use load_limit::{MIN_ITEM_BYTES, from_json};
 pub use mailbox::{
     Account, AccountKind, AsWritten, BETWEEN_MAILBOXES, COPY_INTO_OUTBOX, Category, Directory, DownloadInFull, FOLDERS_STAY_YET, Folder,
-    FolderCounts, FolderKind, GREY_CATEGORY, GraphSwitch, IMPORTED, INTO_OUTBOX, MAX_FOLDER_DEPTH, MAX_RULES, MAX_SHARED, MOVED_INTO_OUTBOX,
-    MailIdentity, Mailbox, NOT_MOVING_YET, NOT_SENDING_YET, OAuth, OAuthProvider, Pending, Queued, Security, Server, ServerFavorites, ServerFolder,
-    preset_category_color,
+    FolderCounts, FolderKind, GREY_CATEGORY, GraphSwitch, IMPORTED, INTO_OUTBOX, MAX_FOLDER_DEPTH, MAX_RULES, MAX_SHARED, MAX_VIPS,
+    MOVED_INTO_OUTBOX, MailIdentity, Mailbox, NOT_MOVING_YET, NOT_SENDING_YET, OAuth, OAuthProvider, Pending, Queued, Security, Server,
+    ServerFavorites, ServerFolder, preset_category_color,
 };
 pub use mailcraft_time as time;
 pub use message::{

@@ -661,6 +661,24 @@ pub struct SystemFont {
     document: Vec<(Font, bool, Arc<FontData>)>,
 }
 
+/// `c`, darkened until white text on it reads (a contrast of 7 to 1 at least, as high contrast asks): what a selected
+/// row of the message list is filled with, from the accent of either theme.
+pub fn under_white(c: Color32) -> Color32 {
+    fn channel(v: u8) -> f32 {
+        let v = f32::from(v) / 255.0;
+        if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    }
+    let lum = |c: Color32| 0.2126 * channel(c.r()) + 0.7152 * channel(c.g()) + 0.0722 * channel(c.b());
+    let mut c = Color32::from_rgb(c.r(), c.g(), c.b());
+    for _ in 0..24 {
+        if 1.05 / (lum(c) + 0.05) >= 7.0 {
+            break;
+        }
+        c = Color32::from_rgb((f32::from(c.r()) * 0.9) as u8, (f32::from(c.g()) * 0.9) as u8, (f32::from(c.b()) * 0.9) as u8);
+    }
+    c
+}
+
 /// The file names (lower case) the face of `font` may have on this system, best first: the
 /// vendor's own on Windows and macOS, then the open metric-compatible faces on Linux and FreeBSD.
 /// `System` is the window's own font and has none.

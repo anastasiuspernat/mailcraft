@@ -49,6 +49,11 @@ mod agent_leaves_tests;
 mod agent_names_tests;
 #[cfg(test)]
 mod agent_undo_tests;
+pub mod ai_host;
+mod ai_options;
+mod ai_tabs;
+#[cfg(test)]
+mod ai_tabs_tests;
 pub mod alerts;
 pub mod approval;
 #[cfg(test)]
@@ -180,6 +185,9 @@ mod secrets_bound_tests;
 mod secrets_replaced_tests;
 mod send_receive;
 mod sender_images;
+mod sender_marks;
+#[cfg(test)]
+mod sender_marks_tests;
 mod sending;
 pub mod server_search;
 pub mod settings_notice;
@@ -235,6 +243,9 @@ pub use unconfirmed::ConfirmedMailbox;
 /// Platform services injected by the host (file dialogs, downloads, servers, storage).
 #[derive(Default)]
 pub struct Services {
+    /// Desktop: the smart Inbox's model, run by the host in a worker process ([`ai_host`]).
+    /// `None` (the browser, a host without one): the smart Inbox's settings say so.
+    pub ai: Option<Box<dyn ai_host::AiHost>>,
     /// Desktop: the icon and application id of the main window, which every other window of the
     /// system (reminders, messages) takes too.
     pub window_identity: Option<windows::WindowIdentity>,
@@ -1438,6 +1449,8 @@ pub struct MailApp {
     pub integrated_titlebar: bool,
     /// The search box's text while it is being typed.
     pub(crate) search_text: String,
+    /// The smart Inbox's work with the host's model, between frames ([`ai_host`]).
+    pub(crate) ai: ai_host::AiTicks,
     pub(crate) search_focus: bool,
     /// Advanced Search, while its panel is open under the search box (#329).
     pub(crate) advanced_search: Option<advanced_search::Panel>,
@@ -1741,6 +1754,8 @@ pub struct MailApp {
     pub(crate) sender_images: sender_images::SenderImages,
     /// The text selected in the messages that are being read, in the pane and in windows.
     pub(crate) text_selection: reading::Selections,
+    /// Messages from an NSFW sender whose pictures the owner unblurred, for this run only.
+    pub(crate) unblurred: std::collections::HashSet<mailcraft_model::Id>,
     /// The last calendar command the owner ran to its end ([`MailApp::run`]), numbered, with how
     /// it went: an appointment window whose save had to ask first learns from it what came of
     /// the question once it is answered.
@@ -1855,6 +1870,7 @@ impl MailApp {
             setup_sign_in: None,
             approvals: Default::default(),
             sync_rx: None,
+            ai: Default::default(),
             sync_totals: Default::default(),
             sync_run: None,
             sync_refused: false,
@@ -1919,6 +1935,7 @@ impl MailApp {
             remote_pictures: Default::default(),
             sender_images: Default::default(),
             text_selection: Default::default(),
+            unblurred: Default::default(),
             ran: (0, String::new(), Ok(Value::Null)),
             free_busy: Default::default(),
             updates: Default::default(),
@@ -4547,6 +4564,8 @@ impl MailApp {
         self.poll_calendar_check();
         self.poll_free_busy();
         self.poll_sync();
+        // The smart Inbox: results in, the next jobs out ([`ai_host`]).
+        ai_host::tick(self, ctx);
         // (Before any other run can start: a shared mailbox being added goes first.)
         // Once MailCraft's data is removed nothing starts by itself any more: no Send/Receive,
         // no calendar run, no check for a new version (#177).

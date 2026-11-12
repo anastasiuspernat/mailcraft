@@ -3,8 +3,10 @@
 //! Desktop Alerts (R7.1): a notification MailCraft asks the operating system to show while it
 //! runs, for a reminder falling due and for new mail in an Inbox of the owner's own accounts.
 //!
-//! - A reminder's alert comes as it falls due, whether the window is in front or not, beside the
-//!   reminders window ([`crate::reminders`]); a reminder put off comes again when it is due again.
+//! - A reminder's alert comes as it falls due, whether the window is in front or not, in place of
+//!   the reminders window ([`crate::reminders`]), which comes up by itself only for a reminder no
+//!   alert could tell of (the switch is off, or the system won't show them) and otherwise on a
+//!   click on the alert or View › Reminders; a reminder put off comes again when it is due again.
 //! - New mail is told of only while the window is not in front, once a Send/Receive is over: what
 //!   arrived is the engine's answer ([`mailcraft_engine::arrivals`]: never an account's first
 //!   download, mail a rule moved away, Junk E-mail or other folders, a shared mailbox, mail
@@ -219,8 +221,10 @@ pub fn plan_reminders(due: &[Reminder], on: bool, twelve_hour: bool) -> Vec<Plan
 }
 
 /// Show what was planned, through the host when there is one; what was shown is remembered.
-fn show(app: &mut MailApp, planned: Vec<Planned>) {
-    let Some(host) = &app.services.alert else { return };
+/// Whether the system took every one of them (none planned, or no host: no).
+fn show(app: &mut MailApp, planned: Vec<Planned>) -> bool {
+    let Some(host) = &app.services.alert else { return false };
+    let mut all = !planned.is_empty();
     for p in planned {
         app.alerts.next_key = app.alerts.next_key.wrapping_add(1);
         let alert = DesktopAlert { key: app.alerts.next_key, kind: p.kind, title: p.title, body: p.body, opens: p.opens };
@@ -232,15 +236,23 @@ fn show(app: &mut MailApp, planned: Vec<Planned>) {
                 app.alerts.shown.push_back(alert);
             }
             // (Nothing of the message in the log: only that it failed, and why.)
-            Err(e) => log::debug!("a desktop alert wasn't shown: {e}"),
+            Err(e) => {
+                log::debug!("a desktop alert wasn't shown: {e}");
+                all = false;
+            }
         }
     }
+    all
 }
 
 /// Reminders that have just fallen due ([`crate::reminders::tick`]).
-pub fn reminders_due(app: &mut MailApp, due: &[Reminder]) {
+/// Whether the system's notifications told of them all, so that the reminders window needn't come
+/// up by itself.
+pub fn reminders_due(app: &mut MailApp, due: &[Reminder]) -> bool {
     let planned = plan_reminders(due, app.ui.alert_reminders, app.session.prefs.twelve_hour);
-    show(app, planned);
+    // (A system that takes alerts but won't show them, notifications turned off for MailCraft,
+    // tells of nothing.)
+    show(app, planned) && app.services.alert.as_ref().is_some_and(|h| h.trouble().is_none())
 }
 
 /// Whether a Send/Receive is under way, or waiting its turn.
@@ -265,7 +277,7 @@ pub fn tick(app: &mut MailApp, ctx: &egui::Context) {
         let found = arrivals::arrivals(&app.session.mailbox, &before);
         let focused = ctx.input(|i| i.focused);
         let planned = plan_mail(&found, app.ui.alert_new_mail, focused);
-        show(app, planned);
+        let _ = show(app, planned);
     }
     let rev = app.session.rev();
     if app.alerts.idle.is_none() || app.alerts.idle_rev != rev || app.alerts.idle.as_ref().is_some_and(|(_, p)| *p != path) {

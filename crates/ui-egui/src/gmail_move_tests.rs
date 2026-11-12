@@ -22,6 +22,9 @@ fn gmail_window(google: bool, on: bool) -> (Harness, Id, Id) {
     let mut harness = window();
     let app = harness.state_mut();
     app.session.gmail_category_moves = on;
+    // (A second account brings All Inboxes and the rest to the top of the pane: off, so that the
+    // Gmail account's rows fit in the window.)
+    app.session.prefs.all_mailboxes = false;
     let servers = json!({"email": "ada@mail.example", "incoming": {"host": "imap.gmail.com"}, "outgoing": {"host": "smtp.gmail.com"}});
     let account = app.execute("account.add", servers).unwrap()["id"].as_u64().unwrap();
     if google {

@@ -165,10 +165,11 @@ pub fn erase(roots: &Roots, mailbox: Option<&Path>) -> WipeReport {
     if let Some(file) = mailbox
         && !inside(file, roots.settings.as_deref())
     {
-        // The file, and what sits beside it (its content folder and word index): all private
+        // The file, and what sits beside it (its content folder, word index and meaning index): all private
         // mail, all left, all said.
         report.left.push((file.display().to_string(), Why::KeptByOwner));
-        for beside in [mailcraft_engine::store::blob_dir(file), mailcraft_engine::store::words_file(file)] {
+        for beside in [mailcraft_engine::store::blob_dir(file), mailcraft_engine::store::words_file(file), mailcraft_engine::vectors::path_for(file)]
+        {
             if fs::symlink_metadata(&beside).is_ok() {
                 report.left.push((beside.display().to_string(), Why::KeptByOwner));
             }
@@ -192,7 +193,7 @@ fn inside(file: &Path, settings: Option<&Path>) -> bool {
 /// without a mailbox (harmless, swept) and never a mailbox without its content.
 fn tier(name: &str, is_dir: bool) -> u8 {
     let mailbox = name.starts_with("mailbox.");
-    match (mailbox, is_dir || name.ends_with(".words")) {
+    match (mailbox, is_dir || name.ends_with(".words") || name.ends_with(".vectors")) {
         (true, false) => 0,
         (true, true) => 1,
         _ => 2,

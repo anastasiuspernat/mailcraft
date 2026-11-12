@@ -336,6 +336,44 @@ fn reminders_falling_due_show_an_alert_each_once_and_again_after_a_snooze() {
     assert_eq!(recorder.shown.lock().unwrap().len(), first * 2);
 }
 
+#[test]
+fn reminders_told_of_by_a_notification_leave_the_window_down_until_asked_for() {
+    let sample = || MailApp::new(Session::at(mailcraft_engine::sample::mailbox(1_791_993_600, 0), 1_791_993_600, 0), Services::default());
+    let ctx = egui::Context::default();
+    // Told of by the system's notification: no window of its own accord.
+    let mut app = sample();
+    app.autosave = false;
+    let recorder = Recorder::default();
+    app.services.alert = Some(Box::new(recorder.clone()));
+    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut app, ctx));
+    assert!(!app.reminders.showing.is_empty());
+    assert!(!crate::reminders::shows(&app));
+    // A click on the notification brings it up, Dismiss and Snooze in it.
+    let key = recorder.shown.lock().unwrap()[0].key;
+    recorder.clicks.lock().unwrap().push(key);
+    pass(&ctx, egui::RawInput::default(), |ctx| clicks(&mut app, ctx));
+    assert!(crate::reminders::shows(&app));
+    // Snoozed and due again: told of by a notification again, and the window stays down.
+    crate::reminders::snooze(&mut app, None, 1);
+    app.reminders.snoozed.values_mut().for_each(|until| *until = 0.0);
+    app.reminders.looked = 0.0;
+    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut app, ctx));
+    assert!(!crate::reminders::shows(&app));
+    // No notifications here (none at all, the switch off, or turned off in the system): the window.
+    let mut none = sample();
+    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut none, ctx));
+    assert!(crate::reminders::shows(&none));
+    let mut off = sample();
+    off.services.alert = Some(Box::new(Recorder::default()));
+    off.execute("ui.desktopAlerts", json!({"reminders": false})).unwrap();
+    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut off, ctx));
+    assert!(crate::reminders::shows(&off));
+    let mut refused = sample();
+    refused.services.alert = Some(Box::new(Recorder { trouble: Some(AlertTrouble::TurnedOff), ..Default::default() }));
+    pass(&ctx, egui::RawInput::default(), |ctx| crate::reminders::tick(&mut refused, ctx));
+    assert!(crate::reminders::shows(&refused));
+}
+
 /// One pass of a context with this input.
 fn pass(ctx: &egui::Context, raw: egui::RawInput, f: impl FnOnce(&egui::Context)) {
     ctx.begin_pass(raw);

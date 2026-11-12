@@ -407,6 +407,11 @@ pub struct Message {
     /// other message, and once it is sent.
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "crate::sync::lenient")]
     pub answers: Option<Answers>,
+    /// What a model on this computer made of it: its part of the Inbox and a summary
+    /// ([`crate::Insight`]). Local only: never sent to a server, written into an exported file, or
+    /// carried into a reply or forward. `None` until something was made of it.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "crate::sync::lenient")]
+    pub insight: Option<Box<crate::Insight>>,
     /// Where the body is while it isn't in memory ([`KeptBody`]); `None` once it is (or when it
     /// always was). Not written: see [`Attachment::kept`].
     #[serde(skip)]

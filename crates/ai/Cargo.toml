@@ -1,0 +1,35 @@
+[package]
+name = "mailcraft-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "MailCraft's on-device model for the smart Inbox and summaries: prompts, grammars and checks, and a worker process that runs llama.cpp (desktop only; the apps alone depend on it)"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# llama.cpp on the processor (`llama-cpp-2`, MIT OR Apache-2.0; llama.cpp itself is MIT). Building
+# it needs CMake, a C++ compiler and libclang.
+llama = ["dep:llama-cpp-2", "dep:llama-cpp-sys-2"]
+# The graphics card through Vulkan (MoltenVK on an Intel Mac; Windows and Linux too). On macOS build
+# with GGML_METAL=OFF (the workspace's `.cargo/config.toml` says so) so that one backend runs.
+vulkan = ["llama", "llama-cpp-2/vulkan"]
+# The graphics card through Metal (Apple silicon). Build with GGML_METAL=ON.
+metal = ["llama", "llama-cpp-2/metal"]
+
+[dependencies]
+mailcraft-model = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Pinned exactly: the version the Phase 0 spike measured on the target machine. Review the diff
+# (and run the GPU self-test) before bumping. No default features: no OpenMP.
+llama-cpp-2 = { version = "=0.1.160", default-features = false, optional = true }
+llama-cpp-sys-2 = { version = "=0.1.161", default-features = false, optional = true }

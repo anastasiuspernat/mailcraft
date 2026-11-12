@@ -9,6 +9,8 @@ mod account_order_tests;
 mod agent_leaves_compose_tests;
 #[cfg(test)]
 mod agent_owners_message_tests;
+pub mod ai;
+pub mod all;
 #[cfg(test)]
 mod answered_tests;
 pub mod auto_replies;
@@ -116,6 +118,7 @@ pub mod search_server;
 #[cfg(test)]
 mod search_suggest_tests;
 pub mod send_receive;
+pub mod senders;
 pub mod shared;
 pub mod signature;
 #[cfg(test)]
@@ -187,6 +190,9 @@ pub fn registry() -> Registry {
     v.extend(tasks_remote::specs());
     v.extend(sync_progress::specs());
     v.extend(search_server::specs());
+    v.extend(ai::specs());
+    v.extend(all::specs());
+    v.extend(senders::specs());
     Registry::new(v)
 }
 

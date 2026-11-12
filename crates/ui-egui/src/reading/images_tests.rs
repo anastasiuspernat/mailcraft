@@ -148,3 +148,19 @@ fn textures_are_let_go_when_no_picture_has_been_shown_for_a_while() {
     harness.run_steps(40);
     assert!(held(&harness).1 > 0);
 }
+
+#[test]
+fn a_blurred_picture_is_decoded_too_small_to_make_anything_out() {
+    let ctx = egui::Context::default();
+    let data = std::sync::Arc::new(flat(1200, 800));
+    let mut pictures = Pictures::default();
+    let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+        match pictures.blurred(ui.ctx(), &data) {
+            super::images::Picture::Ready(texture) => assert!(texture.size()[0] <= 12, "{:?}", texture.size()),
+            other => panic!("{}", matches!(other, super::images::Picture::Pending)),
+        }
+        // Asked again, it is the one kept.
+        assert!(matches!(pictures.blurred(ui.ctx(), &data), super::images::Picture::Ready(_)));
+    });
+    out.textures_delta.clear();
+}

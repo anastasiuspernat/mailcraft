@@ -13,7 +13,7 @@ use mailcraft_engine::{Drawn, Filter, Pane, SortBy};
 use mailcraft_model::{FlagStatus, FolderKind, Id, Importance, Message};
 use serde_json::json;
 
-use crate::theme::{Tokens, paint_clipped, regular, semibold};
+use crate::theme::{Tokens, bold, paint_clipped, regular, semibold};
 use crate::{MailApp, icons};
 
 mod server_rows;
@@ -26,8 +26,10 @@ pub(crate) struct MessageDrag(pub Vec<Id>);
 const GROUP_H: f32 = 25.0;
 /// A group heading's text: 9 pt.
 const GROUP_TEXT: f32 = 12.0;
-/// The sender's name, and the tabs above the list: 11 pt.
+/// The tabs above the list: 11 pt.
 const SENDER_TEXT: f32 = 15.0;
+/// The sender's name in a row: 10 pt, bold.
+const SENDER_NAME: f32 = SENDER_TEXT - 4.0 / 3.0;
 /// Subject, time and preview: 8 pt.
 const LIST_TEXT: f32 = 11.0;
 /// How the list is arranged, in its header: 9 pt.
@@ -73,21 +75,23 @@ const QUICK_TARGET: egui::Vec2 = egui::vec2(28.0, 22.0);
 const QUICK_GAP: f32 = 6.0;
 /// The middle of the sender's capitals, from a row's top: they stand 15 below the line above.
 const SENDER_Y: f32 = 21.0;
-/// The middle of the subject's (and the time's) capitals, from a row's top.
-const SUBJECT_Y: f32 = 37.5;
-/// The top of the preview's first line box, from a row's top: its text ends 15 above the line
-/// under a row.
-const PREVIEW_TOP: f32 = 45.0;
+/// The middle of the subject's (and the time's) capitals, from a row's top: 9 clear under the
+/// sender's.
+const SUBJECT_Y: f32 = 39.5;
+/// The top of the preview's first line box, from a row's top: its letters about 9 clear under the
+/// subject's, as the subject's are under the sender's (measured on screen: the preview's letters
+/// sit low in their line box), and its text ends 15 above the line under a row.
+const PREVIEW_TOP: f32 = 51.0;
 /// From one line of preview to the next.
 const PREVIEW_PITCH: f32 = 13.0;
 /// A row with one line of preview, the line under it included.
-const ROW_H: f32 = 72.0;
+const ROW_H: f32 = 80.0;
 /// What a row loses without a preview: the preview's line and the gap above it.
-const PREVIEW_FIRST: f32 = 15.0;
+const PREVIEW_FIRST: f32 = 21.0;
 /// With sender images on, the picture before a row's text: its radius, its middle from the
 /// row's top (level between the sender's and the subject's lines), and the room after it.
 const AVATAR_RADIUS: f32 = 16.0;
-const AVATAR_Y: f32 = 29.0;
+const AVATAR_Y: f32 = 30.0;
 const AVATAR_GAP: f32 = 10.0;
 
 /// While messages are being dragged: a small label by the pointer saying how many.
@@ -166,8 +170,8 @@ pub fn show(app: &mut MailApp, ui: &mut Ui) {
     }
 }
 
-/// A row and the line under it: 72 with one line of preview (15 clear above the sender's
-/// capitals and 15 under the preview's), 13 more for each further line, 57 with none. It depends
+/// A row and the line under it: 80 with one line of preview (15 clear above the sender's
+/// capitals and 15 under the preview's), 13 more for each further line, 59 with none. It depends
 /// on nothing but the number of preview lines, so where a row is can be worked out without
 /// laying out the rows before it.
 fn row_height(preview_lines: u8) -> f32 {
@@ -211,6 +215,8 @@ fn group_name(group: &str, category: bool) -> &str {
         group
     } else if group == "Pinned" {
         tl!("Pinned")
+    } else if group == mailcraft_engine::list::PRIORITY {
+        tl!("Priority")
     } else if group == mailcraft_engine::list::NO_CATEGORY {
         tl!("No category")
     } else {
@@ -526,6 +532,8 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
     list_header(app, ui);
     // Gmail's categories, when they are tabs above a Gmail Inbox's list (#911).
     crate::gmail_tabs::row(app, ui);
+    // The smart Inbox's parts, above an Inbox's list while it is on.
+    crate::ai_tabs::row(app, ui);
     let rows = app.session.rows();
     search_bar(app, ui, mailcraft_engine::list::listed(&rows));
     // A search covers what is here: of a message not fetched yet, its headers and preview (R3.2).
@@ -542,6 +550,13 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
                 ui.label(egui::RichText::new(said).font(regular(11.5)).color(t.text_dim));
             });
         }
+    }
+    // Search by meaning: what it adds, and how far it has read.
+    if let Some(note) = crate::ai_tabs::meaning_note(&app.session, &rows) {
+        let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::hover());
+        ui.painter().rect_filled(r, 0.0, t.panel);
+        paint_clipped(ui.painter(), pos2(r.min.x + 10.0, r.min.y + 11.0), r.width() - 20.0, &note, regular(11.5), t.text_dim);
+        app.hit.add("searchByMeaning", 0, r);
     }
     // While the word index is being built, what it hasn't got yet is searched more slowly (R6.2).
     if !app.session.view.search.trim().is_empty() && matches!(app.session.word_index(), mailcraft_engine::WordIndex::Building { .. }) {
@@ -576,6 +591,15 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
     let below = if searching { server_rows::height(app, &local, server_h) } else { 0.0 };
     let overlay = app.overlay_scroll_bars;
     let lane_w = lane_width(app);
+    // While the smart Inbox is still reading mail, Primary and All Mail show the Priority box,
+    // with a sweep of light up it, and "Reading mail…" while nothing is in it yet.
+    let reading = !searching && mailcraft_engine::ai::reading_mail(&app.session);
+    if rows.is_empty() && reading {
+        let r = ui.available_rect_before_wrap();
+        let frame = Rect::from_min_max(pos2(r.min.x + PRIORITY_FRAME, r.min.y), pos2(r.max.x - PRIORITY_FRAME, r.min.y + READING_BOX_H));
+        paint_reading_box(app, ui, frame, &t);
+        return;
+    }
     if rows.is_empty() {
         let r = ui.available_rect_before_wrap();
         let msg = if searching {
@@ -598,16 +622,37 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
         }
         return;
     }
-    // Where each row starts: rows are the same height, group headings add theirs.
+    // A row with the smart Inbox's summary shows two lines of it at least.
+    let summary_h = row_height(app.session.prefs.preview_lines.max(SUMMARY_LINES)) - tightening(app.session.prefs.tight_spacing, false);
+    let summaries = !one_line && crate::ai_tabs::summaries_shown(&app.session);
+    let tallest = row_h.max(if summaries { summary_h } else { 0.0 });
+    // Where each row starts and how tall it is: group headings add theirs, and the Priority box
+    // its margin under its last row.
     let mut tops = Vec::with_capacity(rows.len());
-    let mut y = 0.0f32;
-    for row in rows.iter() {
+    let mut heights = Vec::with_capacity(rows.len());
+    // An empty Priority box, while mail is being read, above the rows.
+    let waiting = reading && !rows.iter().any(|r| r.priority);
+    let lead = if waiting { READING_BOX_H + PRIORITY_PAD } else { 0.0 };
+    let mut y = lead;
+    for (i, row) in rows.iter().enumerate() {
         if row.group.is_some() {
             y += GROUP_H;
         }
         tops.push(y);
-        y += row_h;
+        let h = if row.more.is_some() {
+            more_h(row_h)
+        } else if summaries && app.session.mailbox.message(row.id).is_some_and(|m| crate::ai_tabs::list_summary(&app.session, m).is_some()) {
+            summary_h
+        } else {
+            row_h
+        };
+        heights.push(h);
+        y += h;
+        if row.priority && !rows.get(i + 1).is_some_and(|r| r.priority) {
+            y += PRIORITY_PAD;
+        }
     }
+    let priority_box = if waiting { Some((0.0, READING_BOX_H)) } else { priority_span(&rows, &tops, &heights) };
     let rows_end = y;
     let total = y + below;
     let reveal = std::mem::take(&mut app.reveal_selection);
@@ -655,30 +700,57 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
             && let (Some(top), Some(row)) = (tops.get(i).copied(), rows.get(i))
         {
             let above = if row.group.is_some() { GROUP_H } else { 0.0 };
-            let rect = Rect::from_min_max(pos2(origin.x, origin.y + top - above), pos2(origin.x + width, origin.y + top + row_h));
+            let h = heights.get(i).copied().unwrap_or(row_h);
+            let rect = Rect::from_min_max(pos2(origin.x, origin.y + top - above), pos2(origin.x + width, origin.y + top + h));
             ui.scroll_to_rect(rect, None);
         }
         // Only the rows in view are laid out.
-        let first = tops.partition_point(|top| top + row_h < viewport.min.y).saturating_sub(1);
+        let first = tops.partition_point(|top| top + tallest < viewport.min.y).saturating_sub(1);
         for (i, row) in rows.iter().enumerate().skip(first) {
             let Some(top) = tops.get(i).copied() else { break };
             if top - GROUP_H > viewport.max.y {
                 break;
             }
+            // The Priority box's rows sit inside its frame.
+            let (x, w) = if row.priority { (origin.x + PRIORITY_INSET, width - 2.0 * PRIORITY_INSET) } else { (origin.x, width) };
             if let Some(group) = &row.group {
-                // Text on the list itself: no bar, no box.
-                let gr = Rect::from_min_max(pos2(origin.x + ROW_INSET, origin.y + top - GROUP_H), pos2(origin.x + width, origin.y + top));
+                // Text on the list itself: no bar, no box; Priority after the AI's mark.
+                let gr = Rect::from_min_max(pos2(x + ROW_INSET, origin.y + top - GROUP_H), pos2(x + w, origin.y + top));
+                let mut text_x = gr.min.x + 16.0;
+                if row.priority && group == mailcraft_engine::list::PRIORITY {
+                    text_x += paint_ai_mark(ui.painter(), pos2(text_x, gr.center().y + 3.0), &t) + 5.0;
+                }
                 paint_clipped(
                     ui.painter(),
-                    pos2(gr.min.x + 16.0, gr.center().y + 3.0),
-                    gr.width() - 22.0,
+                    pos2(text_x, gr.center().y + 3.0),
+                    gr.max.x - text_x - 6.0,
                     group_name(group, row.category),
                     semibold(GROUP_TEXT),
                     t.group_label,
                 );
             }
-            let rect = Rect::from_min_size(pos2(origin.x, origin.y + top), vec2(width, row_h));
+            let h = heights.get(i).copied().unwrap_or(row_h);
+            if row.more.is_some() {
+                // The smart Inbox's "n more from …": one short line that shows or folds them.
+                let rect = Rect::from_min_size(pos2(x, origin.y + top), vec2(w, h));
+                crate::ai_tabs::more_row(app, ui, row, rect, TEXT_LEFT);
+                continue;
+            }
+            let rect = Rect::from_min_size(pos2(x, origin.y + top), vec2(w, h));
             message_row(app, ui, row, rect, &drawn, focus);
+        }
+        // The Priority box: a slightly rounded frame round its heading and its rows.
+        if let Some((from, to)) = priority_box {
+            let frame = Rect::from_min_max(pos2(origin.x + PRIORITY_FRAME, origin.y + from), pos2(origin.x + width - PRIORITY_FRAME, origin.y + to));
+            if waiting {
+                paint_reading_box(app, ui, frame, &t);
+            } else {
+                ui.painter().rect_stroke(frame, PRIORITY_ROUNDING, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
+                app.hit.add("priorityBox", 0, frame);
+                if reading && frame.intersects(ui.clip_rect()) {
+                    paint_sweep(ui, frame, &t);
+                }
+            }
         }
         if below > 0.0 {
             server_rows::show(app, ui, &local, origin.x, origin.y + rows_end, width, server_h, viewport.translate(origin.to_vec2()));
@@ -687,6 +759,98 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
     if arrows {
         scroll_arrows(app, ui, lane, &out, row_h);
     }
+}
+
+/// The fewest lines of the smart Inbox's summary a row shows.
+const SUMMARY_LINES: u8 = 2;
+/// The Priority box: its frame's distance from the list's edges, its rows' (inside it), its
+/// rounding, and its margin under its last row.
+const PRIORITY_FRAME: f32 = 4.0;
+const PRIORITY_INSET: f32 = 6.0;
+const PRIORITY_ROUNDING: f32 = 6.0;
+const PRIORITY_PAD: f32 = 6.0;
+
+/// How tall the Priority box is while it says "Reading mail…": its heading and one line.
+const READING_BOX_H: f32 = GROUP_H + 34.0;
+/// How long the sweep of light takes from the box's bottom to its top, in seconds.
+const SWEEP_SECONDS: f64 = 2.4;
+
+/// The Priority box while nothing is in it yet and mail is being read: its frame, its heading
+/// and "Reading mail…", with the sweep.
+fn paint_reading_box(app: &mut MailApp, ui: &mut Ui, frame: Rect, t: &Tokens) {
+    let p = ui.painter();
+    p.rect_stroke(frame, PRIORITY_ROUNDING, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
+    let head_y = frame.min.y + GROUP_H / 2.0 + 3.0;
+    let mut x = frame.min.x + PRIORITY_INSET - PRIORITY_FRAME + ROW_INSET + 16.0;
+    x += paint_ai_mark(p, pos2(x, head_y), t) + 5.0;
+    paint_clipped(
+        p,
+        pos2(x, head_y),
+        frame.max.x - x - 6.0,
+        group_name(mailcraft_engine::list::PRIORITY, false),
+        semibold(GROUP_TEXT),
+        t.group_label,
+    );
+    let text_x = frame.min.x + PRIORITY_INSET - PRIORITY_FRAME + TEXT_LEFT;
+    let line_y = frame.min.y + GROUP_H + (frame.height() - GROUP_H) / 2.0;
+    paint_clipped(p, pos2(text_x, line_y), frame.max.x - text_x - 8.0, tl!("Reading mail…"), regular(12.5), t.text_dim);
+    app.hit.add("priorityReading", 0, frame);
+    if frame.intersects(ui.clip_rect()) {
+        paint_sweep(ui, frame, t);
+    }
+}
+
+/// A soft band of the accent colour rising through `frame` from its bottom to its top, again and
+/// again: the smart Inbox at work. Asks for the next frame.
+fn paint_sweep(ui: &Ui, frame: Rect, t: &Tokens) {
+    let inside = frame.shrink(1.5);
+    let band = (inside.height() * 0.6).clamp(36.0, 160.0);
+    let time = ui.input(|i| i.time);
+    let phase = ((time % SWEEP_SECONDS) / SWEEP_SECONDS) as f32;
+    // From under the bottom edge to over the top one.
+    let mid = inside.max.y + band / 2.0 - phase * (inside.height() + band);
+    let peak = t.accent.gamma_multiply(0.16);
+    let clear = egui::Color32::TRANSPARENT;
+    let mut mesh = egui::Mesh::default();
+    let (l, r) = (inside.min.x, inside.max.x);
+    for (y, c) in [(mid + band / 2.0, clear), (mid, peak), (mid - band / 2.0, clear)] {
+        mesh.colored_vertex(pos2(l, y), c);
+        mesh.colored_vertex(pos2(r, y), c);
+    }
+    for k in [0u32, 2] {
+        mesh.add_triangle(k, k + 1, k + 2);
+        mesh.add_triangle(k + 1, k + 3, k + 2);
+    }
+    let clip = inside.intersect(ui.clip_rect());
+    ui.painter().with_clip_rect(clip).add(egui::Shape::mesh(mesh));
+    ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+}
+
+/// Where the Priority box starts (its heading's top) and ends (under its last row and its
+/// margin), down the list; `None` when the list has none.
+fn priority_span(rows: &[Row], tops: &[f32], heights: &[f32]) -> Option<(f32, f32)> {
+    let first = rows.iter().position(|r| r.priority)?;
+    let last = rows.iter().rposition(|r| r.priority)?;
+    let head = if rows.get(first).is_some_and(|r| r.group.is_some()) { GROUP_H } else { 0.0 };
+    let from = tops.get(first)? - head;
+    let to = tops.get(last)? + heights.get(last)? + PRIORITY_PAD;
+    Some((from, to))
+}
+
+/// The smart Inbox's mark, "AI" in a small frame, with its left edge at `at.x` and centred on
+/// `at.y`. How wide it is.
+fn paint_ai_mark(p: &egui::Painter, at: egui::Pos2, t: &Tokens) -> f32 {
+    let mark = p.layout_no_wrap(tl!("AI").to_string(), regular(9.0), t.text_dim);
+    let w = mark.size().x + 6.0;
+    let br = Rect::from_min_max(pos2(at.x, at.y - 6.0), pos2(at.x + w, at.y + 6.0));
+    p.rect_stroke(br, 3.0, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
+    p.galley(br.center() - mark.size() / 2.0, mark, t.text_dim);
+    w
+}
+
+/// The height of a "more" row of the smart Inbox's list: one line.
+fn more_h(row_h: f32) -> f32 {
+    row_h.min(30.0)
 }
 
 /// How wide the folder a search result is in may be drawn: the time's column.
@@ -823,7 +987,7 @@ fn drawn_selection(app: &mut MailApp, rows: &Arc<Vec<Row>>) -> Arc<Drawn> {
 }
 
 fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Drawn, focus: Option<(Id, u16)>) {
-    let t = Tokens::get(ui.ctx());
+    let mut t = Tokens::get(ui.ctx());
     // The shared pointer, not a copy of the message.
     let Some(m) = app.session.mailbox.messages.get(&row.id).cloned() else { return };
     // A message listed under two categories is two rows, each with ids of its own.
@@ -886,9 +1050,10 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
     let body = Rect::from_min_max(pos2(rect.min.x + ROW_INSET, rect.min.y), pos2(rect.max.x, rect.max.y - 1.0));
     let follow_up = FollowUp::of(&m, &app.session);
     let fill = row_fill(&t, follow_up, selected, focus);
-    // A selected row is a rounded card a little in from the list's edges: its fill and an
-    // accent edge (quieter while the list has no focus); a flag's tint is laid first, so it shows
-    // through the selection rather than being replaced by it.
+    // A selected row is a rounded card a little in from the list's edges, without an edge: with
+    // the focus, the accent, darkened as far as white text on it needs, and its text white;
+    // without, the accent's soft tint. A flag's tint is laid first, so it shows through the selection
+    // rather than being replaced by it.
     let card = body.shrink2(vec2(4.0, 1.0));
     let flag_tint = matches!(follow_up, FollowUp::Flagged | FollowUp::Overdue);
     if flag_tint {
@@ -899,10 +1064,16 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
             app.hit.add("messageFlagShade", row.id, body);
         }
     }
-    if let (true, Some(fill)) = (selected, fill) {
-        p.rect_filled(card, 6.0, if flag_tint { fill.gamma_multiply(0.72) } else { fill });
-        let edge = if focus { t.selection_edge } else { t.selection_edge_unfocused };
-        p.rect_stroke(card, 6.0, Stroke::new(1.0, edge), egui::StrokeKind::Inside);
+    let strong = selected && focus;
+    if let (true, Some(_)) = (selected, fill) {
+        let fill = if strong { crate::theme::under_white(t.selection_edge) } else { t.selection };
+        p.rect_filled(card, 6.0, if flag_tint && !strong { fill.gamma_multiply(0.72) } else { fill });
+    }
+    if strong {
+        let white = Color32::WHITE;
+        (t.text, t.icon, t.accent, t.overdue, t.red) = (white, white, white, white, white);
+        t.text_dim = white.gamma_multiply(0.82);
+        t.border_strong = white.gamma_multiply(0.6);
     }
     if !selected && (resp.hovered() || read_resp.hovered() || arrow.as_ref().is_some_and(egui::Response::hovered) || quick.is_some()) {
         // The pointer's shade goes over a flagged row's tint.
@@ -1034,14 +1205,38 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         .map(|label| p.layout_no_wrap(label, regular(LIST_TEXT), t.text_dim))
         .filter(|g| !one || x - 4.0 - (g.size().x + 6.0) >= left + ONE_LINE_SENDER_MIN);
     let size_room = if one { size.as_ref().map_or(0.0, |g| g.size().x + 6.0) } else { 0.0 };
-    let who_font = if unread { semibold(SENDER_TEXT) } else { regular(SENDER_TEXT) };
+    let who_font = bold(SENDER_NAME);
     let who_end = if one { (left + one_line_sender_width(time_end - left)).min(x - 4.0 - size_room) } else { text_end.min(x - 4.0) };
     let mut who_x = left;
     if m.draft {
-        let w = paint_clipped(p, pos2(left, line1), (who_end - left).max(0.0), tl!("[Draft]"), regular(SENDER_TEXT), t.red);
+        let w = paint_clipped(p, pos2(left, line1), (who_end - left).max(0.0), tl!("[Draft]"), bold(SENDER_NAME), t.red);
+        who_x += w + 5.0;
+    }
+    // The emoji the owner gave the sender, first on the row.
+    if let Some(emoji) = app.session.mailbox.sender_emoji_of(&m.from.email) {
+        let w = paint_clipped(p, pos2(who_x, line1), (who_end - who_x).max(0.0), emoji, regular(SENDER_NAME), t.text);
+        app.hit.add("messageEmoji", row.id, Rect::from_min_max(pos2(who_x, line1 - 8.0), pos2(who_x + w, line1 + 8.0)));
         who_x += w + 5.0;
     }
     let w = paint_clipped(p, pos2(who_x, line1), (who_end - who_x).max(0.0), &who, who_font, if overdue { t.overdue } else { t.text });
+    let mut after = who_x + w;
+    // A VIP's mail: a star after the sender's name, where there is room for it.
+    if app.session.mailbox.is_vip(&m.from.email) && after + 18.0 <= who_end {
+        let star = Rect::from_center_size(pos2(after + 10.0, line1), vec2(12.0, 12.0));
+        crate::icons::paint(p, star, "starOn", t.text_dim, t.accent);
+        app.hit.add("messageVip", row.id, star);
+        after += 18.0;
+    }
+    // Mail of a sender the owner taught is junk: a small tag, where there is room for it.
+    if app.session.mailbox.is_learned_junk(&m.from.email) && !app.session.mailbox.in_junk(m.folder) {
+        let tag = p.layout_no_wrap(tl!("Junk").to_string(), semibold(LIST_TEXT - 1.0), t.red);
+        let r = Rect::from_min_size(pos2(after + 6.0, line1 - 8.0), vec2(tag.size().x + 10.0, 16.0));
+        if r.max.x <= who_end {
+            p.rect_stroke(r, 4.0, Stroke::new(1.0, t.red), egui::StrokeKind::Inside);
+            p.galley(r.center() - tag.size() / 2.0, tag, t.red);
+            app.hit.add("messageLearnedJunk", row.id, r);
+        }
+    }
     app.hit.add("messageSender", row.id, Rect::from_min_max(pos2(left, line1 - 7.0), pos2(who_x + w, line1 + 7.0)));
 
     // The subject's line, with the time at its end.
@@ -1051,7 +1246,14 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
     // The size; in a search of every mailbox the folder it is in; then category marks and the
     // size of a conversation: at the right of the preview's first line, under the time, before
     // the time when no preview is shown, or before the marks in a single line.
-    let lines = if one { 0 } else { app.session.prefs.preview_lines.min(3) };
+    // The smart Inbox's summary, when there is one, in place of the preview: two lines of it at
+    // least.
+    let summary = crate::ai_tabs::list_summary(&app.session, &m);
+    let lines = match (one, summary) {
+        (true, _) => 0,
+        (false, Some(_)) => app.session.prefs.preview_lines.clamp(SUMMARY_LINES, 3),
+        (false, None) => app.session.prefs.preview_lines.min(3),
+    };
     let preview_y = rect.min.y + PREVIEW_TOP + PREVIEW_PITCH / 2.0 + 0.5;
     let (mut sx, tail_y) = if one {
         (x, line1)
@@ -1079,6 +1281,27 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         p.rect_filled(Rect::from_center_size(pos2(sx - 5.0, tail_y), vec2(10.0, 10.0)), 2.0, color);
         sx -= 13.0;
     }
+    // Found by a search's meaning alone: said, so that a row without the search's words is
+    // understood.
+    if row.meaning {
+        let label = p.layout_no_wrap(tl!("By meaning").to_string(), regular(10.0), t.accent);
+        let w = label.size().x + 8.0;
+        let br = Rect::from_min_max(pos2(sx - w, tail_y - 7.0), pos2(sx, tail_y + 7.0));
+        p.rect_stroke(br, 3.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside);
+        p.galley(br.center() - label.size() / 2.0, label, t.accent);
+        app.hit.add("messageByMeaning", row.id, br);
+        sx -= w + 5.0;
+    }
+    // The smart Inbox's part, as a small word in a frame, while the whole Inbox is listed.
+    if let Some(c) = crate::ai_tabs::chip(&app.session, &m) {
+        let label = p.layout_no_wrap(crate::ai_tabs::name(c).to_string(), regular(10.0), t.text_dim);
+        let w = label.size().x + 8.0;
+        let br = Rect::from_min_max(pos2(sx - w, tail_y - 7.0), pos2(sx, tail_y + 7.0));
+        p.rect_stroke(br, 3.0, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
+        p.galley(br.center() - label.size() / 2.0, label, t.text_dim);
+        app.hit.add("messageSmartCategory", row.id, br);
+        sx -= w + 5.0;
+    }
     // How many messages the conversation has, in every folder: what opens under it (#503).
     if conversation {
         let n = row.size().to_string();
@@ -1102,8 +1325,19 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
 
     // Then the preview: whole words, as many lines as asked for, and no mark where it stops.
     let preview_end = text_end.min(sx - 6.0);
+    // The summary after the AI's mark.
+    let mut left = left;
+    if lines > 0 && preview_end - left > 40.0 && summary.is_some() {
+        let y = rect.min.y + PREVIEW_TOP + PREVIEW_PITCH / 2.0 - 1.0;
+        let w = paint_ai_mark(p, pos2(left, y), &t);
+        app.hit.add("messageListSummary", row.id, Rect::from_min_max(pos2(left, y - 6.0), pos2(left + w, y + 6.0)));
+        left += w + 5.0;
+    }
     if lines > 0 && preview_end - left > 4.0 {
-        let said = preview(ui, &m, usize::from(lines) * 200);
+        let said: Arc<str> = match summary {
+            Some(text) => text.into(),
+            None => preview(ui, &m, usize::from(lines) * 200),
+        };
         let format =
             egui::text::TextFormat { font_id: regular(LIST_TEXT), color: t.text_dim, line_height: Some(PREVIEW_PITCH), ..Default::default() };
         let mut job = egui::text::LayoutJob::default();
@@ -1216,12 +1450,16 @@ fn clicks(app: &mut MailApp, ui: &Ui, resp: &egui::Response, row: &Row, m: &Mess
         });
         // Gmail's categories, for mail of a Gmail Inbox, where moves between them are on (#911).
         crate::gmail_move::menu(app, ui);
+        // The smart Inbox's parts, for Inbox mail while it is on.
+        crate::ai_tabs::menu(app, ui);
         mi(ui, app, "Archive", "mail.archive", json!({}));
         ui.menu_button(tl!("Junk"), |ui| crate::ribbon::junk_menu(ui, app));
         mi(ui, app, "Delete", "mail.delete", json!({}));
         ui.separator();
         mi(ui, app, "Add to Tasks", "tasks.fromMessage", json!({}));
         mi(ui, app, "Add Sender to Contacts", "people.fromMessage", json!({}));
+        // What the owner teaches about the sender: Priority (a VIP), junk, NSFW, an emoji.
+        crate::sender_marks::menu(app, ui, m);
         mi(ui, app, "Find Related Messages", "mail.findRelated", json!({}));
         mi(ui, app, "Messages from Sender", "mail.findFromSender", json!({"id": id}));
         mi(ui, app, "Save Message As…", "file.exportMessage", json!({}));
@@ -1264,6 +1502,8 @@ mod tests {
         app.auto_sync = false;
         // The lane and its arrows, on a Mac too (`overlay_scroll_tests` has the bar that floats).
         app.overlay_scroll_bars = false;
+        // With the headings these tests measure round.
+        app.session.prefs.show_groups = true;
         app
     }
 
@@ -1320,10 +1560,11 @@ mod tests {
 
     #[test]
     fn a_rows_height_is_its_preview_lines_and_nothing_else() {
-        // One line of preview: 15 clear above the sender's capitals (11 tall), 7 to the subject's
-        // (8 tall), 7 to the preview's (8 tall), 15 under them, and the line under the row.
-        assert_eq!(row_height(1), 15.0 + 11.0 + 7.0 + 8.0 + 7.0 + 8.0 + 15.0 + 1.0);
-        assert_eq!([row_height(0), row_height(1), row_height(2), row_height(3)], [57.0, 72.0, 85.0, 98.0]);
+        // One line of preview: 15 clear above the sender's capitals (11 tall), 9 to the subject's
+        // (8 tall), 13 to the top of the preview's line box (its letters 9 under the subject's),
+        // 8 of it, 15 under them, and the line under the row.
+        assert_eq!(row_height(1), 15.0 + 11.0 + 9.0 + 8.0 + 13.0 + 8.0 + 15.0 + 1.0);
+        assert_eq!([row_height(0), row_height(1), row_height(2), row_height(3)], [59.0, 80.0, 93.0, 106.0]);
         assert_eq!(row_height(200), row_height(3));
         assert_eq!(SCROLL_LANE, 29.0);
     }

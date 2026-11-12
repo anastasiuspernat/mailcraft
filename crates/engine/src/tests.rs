@@ -65,6 +65,7 @@ fn shortcuts_are_not_bound_twice() {
 #[test]
 fn the_sample_mailbox_opens_on_a_grouped_inbox() {
     let mut s = session();
+    s.prefs.show_groups = true;
     assert_eq!(s.view.folder, kind(&s, FolderKind::Inbox));
     let rows = s.rows();
     let groups: Vec<&str> = rows.iter().filter_map(|r| r.group.as_deref()).collect();
@@ -77,17 +78,22 @@ fn the_sample_mailbox_opens_on_a_grouped_inbox() {
 #[test]
 fn show_in_groups_off_leaves_rows_without_headings_and_is_remembered() {
     let mut s = session();
+    // Off by default: one continuous list.
+    assert!(s.rows().iter().all(|r| r.group.is_none()));
+    assert_eq!(s.run("view.groups", &json!({})).unwrap()["value"], true);
     let sorted: Vec<Id> = s.rows().iter().map(|r| r.id).collect();
     assert!(s.rows().iter().any(|r| r.group.is_some()));
     assert_eq!(s.run("view.groups", &json!({})).unwrap()["value"], false);
     let rows = s.rows();
     assert!(rows.iter().all(|r| r.group.is_none()));
     assert_eq!(rows.iter().map(|r| r.id).collect::<Vec<_>>(), sorted);
-    // Saved with the other preferences, and on again by the same command.
+    // Saved with the other preferences; one saved when they were on by default is let go.
     let saved = serde_json::to_value(&s.prefs).unwrap();
-    assert_eq!(saved["showGroups"], false);
+    assert_eq!(saved["dateGroups"], false);
     assert!(!serde_json::from_value::<crate::Prefs>(saved).unwrap().show_groups);
-    assert!(serde_json::from_value::<crate::Prefs>(json!({})).unwrap().show_groups);
+    assert!(!serde_json::from_value::<crate::Prefs>(json!({})).unwrap().show_groups);
+    assert!(!serde_json::from_value::<crate::Prefs>(json!({"showGroups": true})).unwrap().show_groups);
+    assert!(serde_json::from_value::<crate::Prefs>(json!({"dateGroups": true})).unwrap().show_groups);
     assert_eq!(s.run("view.groups", &json!({"value": true})).unwrap()["value"], true);
     assert!(s.rows().iter().any(|r| r.group.is_some()));
 }
@@ -373,6 +379,7 @@ fn folders_and_views() {
     assert!(matches!(s.run("folder.empty", &json!({})), Err(CmdError::Disabled(_))));
 
     run(&mut s, "folder.select", json!({"kind": "inbox"}));
+    s.prefs.show_groups = true;
     run(&mut s, "view.sort", json!({"by": "from"}));
     assert!(!s.view.sort_descending);
     let rows = s.rows();

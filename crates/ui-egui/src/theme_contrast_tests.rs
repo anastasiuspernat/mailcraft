@@ -35,6 +35,7 @@ const PAIRS: &[Pair] = &[
     ("text on window", |t| t.text, |t| t.canvas, TEXT),
     ("text on ribbon", |t| t.text, |t| t.ribbon, TEXT),
     ("text on selection", |t| t.text, |t| t.selection, TEXT),
+    ("white on a selected message row", |_| Color32::WHITE, |t| super::under_white(t.selection_edge), STRONG),
     ("text on flagged_row", |t| t.text, |t| t.flagged_row, TEXT),
     ("text on hover", |t| t.text, |t| t.hover, TEXT),
     ("text on checked", |t| t.text, |t| t.checked, TEXT),

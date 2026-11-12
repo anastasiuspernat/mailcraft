@@ -85,8 +85,10 @@ High-DPI is handled by egui; a system tray and badges are absent (gap #11). Desk
 reminders and for new mail go through the system's own notifications while MailCraft runs (R7.1):
 the desktop's notification service on Linux and the BSDs, toasts on Windows (for the copy the
 `.msi` installed, whose Start menu shortcut names it), the notification centre for the macOS app.
-A click brings the window in front and opens the message or the reminders window (on macOS it
-brings MailCraft in front only). File › Options has a switch for each and says why alerts can't
+A due reminder is told of by its notification alone; the reminders window comes up by itself only
+when no notification could be shown (the switch is off, or the system won't show MailCraft's), and
+otherwise on a click on the notification or View › Reminders. A click brings the window in front
+and opens the message or the reminders window (on macOS it brings MailCraft in front only). File › Options has a switch for each and says why alerts can't
 be shown when they can't.
 
 ## Revision history

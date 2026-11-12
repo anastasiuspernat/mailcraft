@@ -161,6 +161,8 @@ fn wasm_set() -> Result<Vec<String>, String> {
     let crates = layers::from_metadata(&metadata()?)?;
     Ok(crates
         .into_iter()
+        // The apps' own crates (the model runner) never go to the browser.
+        .filter(|c| !layers::APP_ONLY_MEMBERS.contains(&layers::short_name(&c.name)))
         .filter(|c| match layers::classify(&c.name) {
             Some(layers::Class::Layer(l)) => l <= 5 || layers::short_name(&c.name) == "ui-egui",
             Some(layers::Class::Standalone) => true,

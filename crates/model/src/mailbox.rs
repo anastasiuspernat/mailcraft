@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The mailbox: everything MailCraft keeps, with the primitives that edit it.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -1072,6 +1072,28 @@ pub struct Mailbox {
     /// of the account (a shared mailbox has its owner's, [`Mailbox::junk_owner`]).
     #[serde(skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::load_limit::capped_map")]
     pub junk_accounts: BTreeMap<Id, crate::JunkLists>,
+    /// The part of the Inbox the owner said a sender's mail goes to (smart Inbox, `ai.setCategory`
+    /// with `sender`), by the sender's address in lower case. Local only, never sent anywhere; at
+    /// most [`crate::insight::MAX_SENDER_RULES`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::sync::lenient_or_default")]
+    pub ai_sender_rules: BTreeMap<String, crate::InboxCategory>,
+    /// The senders the owner marked as VIPs (`people.setVip`), by address in lower case: the
+    /// VIPs mailbox lists their mail from every account, and the smart Inbox keeps it in Primary.
+    /// Local only, never sent anywhere; at most [`MAX_VIPS`].
+    #[serde(skip_serializing_if = "BTreeSet::is_empty", deserialize_with = "crate::sync::lenient_or_default")]
+    pub vips: BTreeSet<String>,
+    /// How many times the owner moved each sender's mail to Junk E-mail, by address in lower
+    /// case: at [`crate::sender_marks::JUNK_LEARNED`] their later mail is marked as junk, and Not
+    /// Junk forgets them ([`crate::sender_marks`]). Local only; at most
+    /// [`crate::sender_marks::MAX_SENDERS`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::sync::lenient_or_default")]
+    pub junk_marks: BTreeMap<String, u8>,
+    /// The senders whose pictures are drawn blurred, by address in lower case. Local only.
+    #[serde(skip_serializing_if = "BTreeSet::is_empty", deserialize_with = "crate::sync::lenient_or_default")]
+    pub nsfw_senders: BTreeSet<String>,
+    /// The emoji the owner gave each sender, shown on their rows in the list. Local only.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::sync::lenient_or_default")]
+    pub sender_emoji: BTreeMap<String, String>,
     pub signatures: Vec<Signature>,
     /// Moves and deletions the mail server is yet to be told, oldest first.
     #[serde(skip_serializing_if = "Vec::is_empty", deserialize_with = "crate::sync::lenient_list")]
@@ -1161,6 +1183,11 @@ impl Default for Mailbox {
             version: 1,
             accounts: Vec::new(),
             account_order: Vec::new(),
+            ai_sender_rules: BTreeMap::new(),
+            vips: BTreeSet::new(),
+            junk_marks: BTreeMap::new(),
+            nsfw_senders: BTreeSet::new(),
+            sender_emoji: BTreeMap::new(),
             folders: Vec::new(),
             messages: Messages::new(),
             contacts: BTreeMap::new(),
@@ -3330,6 +3357,15 @@ impl Mailbox {
             self.rules.truncate(MAX_RULES);
             fixed.push(format!("rules cut to {MAX_RULES}"));
         }
+        if self.repair_sender_rules() {
+            fixed.push("sorted senders tidied".to_string());
+        }
+        if self.repair_vips() {
+            fixed.push("VIPs tidied".to_string());
+        }
+        if self.repair_sender_marks() {
+            fixed.push("junk, NSFW and emoji marks of senders tidied".to_string());
+        }
         if self.migrate_junk_lists() {
             fixed.push("Safe and Blocked Senders moved to each account".to_string());
         }
@@ -3730,4 +3766,74 @@ impl Mailbox {
         self.pending = kept;
         (before - self.pending.len()) + mended
     }
+}
+
+impl Mailbox {
+    /// Keys in lower case, without spaces round them, none empty, at most
+    /// [`crate::insight::MAX_SENDER_RULES`]. Whether anything changed.
+    fn repair_sender_rules(&mut self) -> bool {
+        let tidy = self.ai_sender_rules.len() > crate::insight::MAX_SENDER_RULES
+            || self.ai_sender_rules.keys().any(|k| k.is_empty() || *k != k.trim().to_lowercase());
+        if !tidy {
+            return false;
+        }
+        let rules = std::mem::take(&mut self.ai_sender_rules);
+        for (k, v) in rules {
+            let k = k.trim().to_lowercase();
+            if !k.is_empty() && self.ai_sender_rules.len() < crate::insight::MAX_SENDER_RULES {
+                self.ai_sender_rules.insert(k, v);
+            }
+        }
+        true
+    }
+
+    /// Addresses in lower case, without spaces round them, none empty, at most [`MAX_VIPS`].
+    /// Whether anything changed.
+    fn repair_vips(&mut self) -> bool {
+        let tidy = self.vips.len() > MAX_VIPS || self.vips.iter().any(|k| k.is_empty() || *k != vip_key(k));
+        if !tidy {
+            return false;
+        }
+        let vips = std::mem::take(&mut self.vips);
+        for k in vips {
+            let k = vip_key(&k);
+            if !k.is_empty() && self.vips.len() < MAX_VIPS {
+                self.vips.insert(k);
+            }
+        }
+        true
+    }
+
+    /// Whether the owner marked `address` as a VIP.
+    pub fn is_vip(&self, address: &str) -> bool {
+        !self.vips.is_empty() && self.vips.contains(&vip_key(address))
+    }
+
+    /// Mark `address` as a VIP (`true`) or not. Whether that changed anything; an empty address,
+    /// or a new VIP past [`MAX_VIPS`], changes nothing.
+    pub fn set_vip(&mut self, address: &str, vip: bool) -> bool {
+        let key = vip_key(address);
+        if key.is_empty() {
+            return false;
+        }
+        if !vip {
+            return self.vips.remove(&key);
+        }
+        self.vips.len() < MAX_VIPS && self.vips.insert(key)
+    }
+
+    /// The part of the Inbox the owner said `address`'s mail goes to, if they said.
+    pub fn sender_rule(&self, address: &str) -> Option<crate::InboxCategory> {
+        self.ai_sender_rules.get(&address.trim().to_lowercase()).copied()
+    }
+}
+
+/// The most senders that can be VIPs.
+pub const MAX_VIPS: usize = 10_000;
+
+/// How a VIP's address is kept: trimmed, in lower case, at most 320 bytes (a longer one is no
+/// address and is kept as none).
+pub(crate) fn vip_key(address: &str) -> String {
+    let key = address.trim().to_lowercase();
+    if key.len() > 320 { String::new() } else { key }
 }

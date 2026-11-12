@@ -39,6 +39,7 @@ mod select;
 mod sharing;
 #[cfg(test)]
 mod sharing_tests;
+mod summary;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -57,6 +58,7 @@ pub(crate) use invitation::{list_marks, options as invitation_options, question 
 pub use remote::{Access, RemotePictures};
 pub use select::Selections;
 pub(crate) use select::{inspect as selection_inspect, select_all_params};
+pub(crate) use view::blurred;
 pub(crate) use view::char_at;
 pub(crate) use warnings::row_mark as warning_mark;
 
@@ -403,6 +405,8 @@ fn header(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Place, pictur
         ui.spacing_mut().item_spacing = vec2(6.0, 4.0);
         // What may not be what it seems about it, above everything else (#508).
         warnings::banner(app, ui, m, place, &t);
+        // What the owner taught about the sender: junk learned, pictures blurred.
+        crate::sender_marks::bars(app, ui, m, &t);
         // Subject, with the actions on the right (a window has them in its toolbar).
         ui.horizontal(|ui| {
             let subject = if m.subject.trim().is_empty() { tl!("(no subject)") } else { m.subject.as_str() };
@@ -517,6 +521,8 @@ fn header(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Place, pictur
         });
         notes(app, ui, m, &t, pictures);
         attachments(app, ui, m, &t);
+        // What the model on this computer made of it, above its text.
+        summary::block(app, ui, m, place, &t);
     });
     select::header(app, ui, place, fields, around.response.rect);
     let r = ui.available_rect_before_wrap();

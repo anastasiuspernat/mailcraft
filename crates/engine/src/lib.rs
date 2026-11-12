@@ -25,6 +25,8 @@ macro_rules! failed {
 }
 
 pub mod agent;
+pub mod ai;
+pub mod all;
 pub mod arrivals;
 pub mod catalog;
 pub mod cmd;
@@ -57,6 +59,7 @@ pub mod store_before;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod undo;
+pub mod vectors;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod words;
 

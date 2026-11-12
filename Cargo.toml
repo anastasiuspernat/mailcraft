@@ -32,6 +32,7 @@ mailcraft-engine = { path = "crates/engine" }
 mailcraft-mcp = { path = "crates/mcp" }
 mailcraft-control-key = { path = "crates/control-key" }
 mailcraft-ui-egui = { path = "crates/ui-egui" }
+mailcraft-ai = { path = "crates/ai" }
 
 # foundation
 thiserror = "2"

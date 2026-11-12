@@ -38,7 +38,7 @@ USAGE:
                                                 .ics (the calendar), .vcf (the contacts),
                                                 .mailcraft (everything, in one file)
   mailcraft-cli convert <in> <out>              between .mailcraft, .eml, .mbox, .ics and .vcf
-  mailcraft-cli run [--file F | --sample] --cmd 'id={json}' [--cmd ...] [--save OUT] [--print]
+  mailcraft-cli run [--file F | --sample | --sample-accounts] --cmd 'id={json}' [--cmd ...] [--save OUT] [--print]
                                                 run commands headlessly, then save
   mailcraft-cli sync <mailbox> [--account EMAIL]
                                                 Send/Receive with the account's mail server; the
@@ -95,6 +95,12 @@ fn open_or_new(path: &str) -> Result<Session, String> {
 fn sample() -> Session {
     let now = mailcraft_time::now();
     Session::new(mailcraft_engine::sample::mailbox(now, mailcraft_time::local_offset_minutes(now)))
+}
+
+/// The sample with two more accounts (`--sample-accounts`), for All Inboxes and the rest.
+fn sample_accounts() -> Session {
+    let now = mailcraft_time::now();
+    Session::new(mailcraft_engine::sample::several_accounts(now, mailcraft_time::local_offset_minutes(now)))
 }
 
 /// Every `--allow` value, split at commas: what the owner lets an agent do without asking.
@@ -419,9 +425,15 @@ fn run(args: &[String]) -> Result<(), Failure> {
             Ok(())
         }
         "run" => {
-            positionals("run", &rest, &[value("--file"), flag("--sample"), value("--cmd"), value("--save"), flag("--print")])?;
-            let mut s = match (arg_value(&rest, "--file"), rest.iter().any(|a| a == "--sample")) {
+            positionals(
+                "run",
+                &rest,
+                &[value("--file"), flag("--sample"), flag("--sample-accounts"), value("--cmd"), value("--save"), flag("--print")],
+            )?;
+            let several = rest.iter().any(|a| a == "--sample-accounts");
+            let mut s = match (arg_value(&rest, "--file"), rest.iter().any(|a| a == "--sample") || several) {
                 (Some(f), _) => open(&f)?,
+                (None, true) if several => sample_accounts(),
                 (None, true) => sample(),
                 (None, false) => Session::new(Mailbox::with_local_account("", "")),
             };

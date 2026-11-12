@@ -569,3 +569,46 @@ fn gmail_categories_are_reached_and_chosen_with_the_keyboard() {
     assert_eq!(harness.state().session.view.gmail, Some((inbox, GmailCategory::Promotions)));
     assert_eq!(mailcraft_engine::gmail::in_view(&harness.state().session), Some(GmailCategory::Promotions));
 }
+
+/// With three accounts the pane starts with All Inboxes (each account's Inbox under it), VIPs,
+/// Flagged, All Drafts and All Sent; a click shows one, with its counts; File › Options hides them.
+#[test]
+fn all_inboxes_and_the_rest_lead_the_pane_of_several_accounts() {
+    let mut app = MailApp::new(Session::at(mailcraft_engine::sample::several_accounts(NOW, 0), NOW, 0), Services::default());
+    app.autosave = false;
+    let mut harness =
+        egui_kittest::Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1280.0, 900.0)).build_ui_state(
+            |ui, app: &mut MailApp| {
+                let ctx = ui.ctx().clone();
+                app.logic(&ctx);
+                app.ui(ui);
+            },
+            app,
+        );
+    harness.run_steps(4);
+    let _ = harness.state_mut().execute("ui.dismissReminder", serde_json::json!({"all": true}));
+    harness.run_steps(3);
+    let rows: Vec<Rect> = (0..5).map(|i| harness.state().hit.rect("allMailbox", i).expect("a row of every account's mail")).collect();
+    assert!(rows.windows(2).all(|w| w[0].min.y < w[1].min.y), "in order, top to bottom");
+    let favorites = harness.state().hit.rect("folderHeading", 0).unwrap();
+    assert!(rows.iter().all(|r| r.max.y <= favorites.min.y + 0.5), "above the Favorites");
+    // Each account's Inbox under All Inboxes.
+    let inboxes: Vec<Id> = {
+        let mb = &harness.state().session.mailbox;
+        mb.accounts.iter().filter_map(|a| mb.folder_of_kind(a.id, FolderKind::Inbox)).collect()
+    };
+    assert_eq!(inboxes.len(), 3);
+    for inbox in &inboxes {
+        assert!(harness.state().hit.rect("allMailboxFolder", *inbox).is_some());
+    }
+    // A click on Flagged shows every account's flagged mail.
+    click(&mut harness, rows[2].center());
+    let s = &mut harness.state_mut().session;
+    assert_eq!(mailcraft_engine::all::in_view(s), Some(mailcraft_engine::all::AllMailbox::Flagged));
+    let listed: Vec<Id> = s.rows().iter().map(|r| r.id).collect();
+    assert!(!listed.is_empty() && listed.iter().all(|id| s.mailbox.message(*id).is_some_and(|m| m.flag == mailcraft_model::FlagStatus::Flagged)));
+    // Off in File › Options: gone.
+    harness.state_mut().execute("view.showAllMailboxes", serde_json::json!({"value": false})).unwrap();
+    harness.run_steps(3);
+    assert!(harness.state().hit.rect("allMailbox", 0).is_none());
+}

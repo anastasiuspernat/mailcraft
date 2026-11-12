@@ -671,6 +671,11 @@ fn main() {
     let host: Arc<Mutex<Host>> = Default::default();
     let stood_in = lines.iter().any(|l| l.get("host").is_some());
     let mut services = if stood_in { stand_in(&host) } else { Services::default() };
+    // The smart Inbox's model (`{"host": {"ai": "fake"}}`): answers at once by fixed rules, as a
+    // loaded model on the graphics card would; nothing is run.
+    if lines.iter().any(|l| l.pointer("/host/ai").is_some()) {
+        services.ai = Some(Box::new(StandInAi::default()));
+    }
     // The system's notifications, always (File › Options shows its switches where there are some).
     services.alert = Some(Box::new(StandInAlerts(host.clone())));
     // Remove MailCraft's data (#177): offered, and removes nothing here.
@@ -863,5 +868,109 @@ fn step(harness: &mut egui_kittest::Harness<'_, MailApp>) {
 fn step_n(harness: &mut egui_kittest::Harness<'_, MailApp>, n: usize) {
     for _ in 0..n {
         step(harness);
+    }
+}
+
+/// The stand-in embedding model's numbers: each word (its group's name, when it has one) adds to
+/// one of the numbers its letters choose, so that texts that share words or meanings come close.
+fn stand_in_embedding(text: &str) -> Vec<f32> {
+    const SAME: &[(&str, &[&str])] = &[
+        ("work", &["roadmap", "review", "release", "checklist", "planning", "project", "plan"]),
+        ("money", &["invoice", "bill", "payment", "receipt", "expense", "expenses", "reimbursement", "amount"]),
+        ("design", &["mockups", "homepage", "design", "layout", "onboarding"]),
+    ];
+    let dim = mailcraft_model::insight::EMBED_DIM;
+    let mut v = vec![0.0f32; dim];
+    let lower = text.to_lowercase();
+    for word in lower.split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 3) {
+        let word = SAME.iter().find(|(_, ws)| ws.contains(&word)).map_or(word, |(name, _)| name);
+        let slot = word.bytes().fold(0x811c_9dc5u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193)) as usize % dim;
+        if let Some(x) = v.get_mut(slot) {
+            *x += if SAME.iter().any(|(name, _)| *name == word) { 4.0 } else { 1.0 };
+        }
+    }
+    let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-6);
+    v.iter_mut().for_each(|x| *x /= norm);
+    v
+}
+
+/// A stand-in for the smart Inbox's model: every job answered at once, by fixed rules.
+#[derive(Default)]
+struct StandInAi {
+    held: std::cell::RefCell<Vec<mailcraft_model::insight::Job>>,
+}
+
+impl mailcraft_ui_egui::ai_host::AiHost for StandInAi {
+    fn configure(&self, _: Option<mailcraft_ui_egui::ai_host::AiConfig>) {}
+    fn submit(&self, jobs: Vec<mailcraft_model::insight::Job>) {
+        self.held.borrow_mut().extend(jobs);
+    }
+    fn take_results(&self) -> Vec<mailcraft_model::insight::JobResult> {
+        use mailcraft_model::insight::{Answer, JobKind, JobResult, Outcome};
+        std::mem::take(&mut *self.held.borrow_mut())
+            .into_iter()
+            .map(|job| {
+                if job.kind.embeds() {
+                    let answer = Answer { vector: stand_in_embedding(&job.input), ..Default::default() };
+                    return JobResult {
+                        id: job.id,
+                        kind: job.kind,
+                        content_hash: job.content_hash,
+                        outcome: Outcome::Done(answer),
+                        model_id: "qwen3-embedding-0.6b-q8_0".into(),
+                        millis: 40,
+                    };
+                }
+                let text = job.input.to_lowercase();
+                let category = if text.contains("list-unsubscribe=yes") || text.contains("% off") || text.contains("sale") {
+                    "promotions"
+                } else if ["order", "receipt", "invoice", "booking", "payment"].iter().any(|w| text.contains(w)) {
+                    "transactions"
+                } else if ["newsletter", "digest", "notification", "update"].iter().any(|w| text.contains(w)) {
+                    "updates"
+                } else {
+                    "primary"
+                };
+                let subject = job.input.lines().find_map(|l| l.strip_prefix("Subject: ")).unwrap_or_default().to_string();
+                let sender =
+                    job.input.lines().find_map(|l| l.strip_prefix("From: ")).and_then(|f| f.split(" <").next()).unwrap_or("The sender").to_string();
+                let summary = (job.kind != JobKind::Classify)
+                    .then(|| format!("{sender} writes about \"{subject}\" and asks you to reply with your thoughts before the end of the week."));
+                // Time-sensitive, as a model would find these: something moved, due or to look at now.
+                let urgent = category == "primary"
+                    && ["moved", "review", "mockups", "checklist", "feedback", "due", "today"].iter().any(|w| subject.to_lowercase().contains(w));
+                let answer = Answer {
+                    priority: (job.kind != JobKind::SummarizeThread).then_some(urgent),
+                    category: (job.kind != JobKind::SummarizeThread).then(|| category.to_string()),
+                    actions: if summary.is_some() { vec!["Reply with your thoughts".into(), "Check the attached notes".into()] } else { Vec::new() },
+                    due: summary.as_ref().map(|_| "2026-10-16".to_string()),
+                    summary,
+                    vector: Vec::new(),
+                };
+                JobResult {
+                    id: job.id,
+                    kind: job.kind,
+                    content_hash: job.content_hash,
+                    outcome: Outcome::Done(answer),
+                    model_id: "qwen3-4b-instruct-2507-q4_0".into(),
+                    millis: 2200,
+                }
+            })
+            .collect()
+    }
+    fn status(&self) -> mailcraft_engine::ai::HostStatus {
+        mailcraft_engine::ai::HostStatus {
+            available: true,
+            backend: "vulkan".into(),
+            model: "qwen3-4b-instruct-2507-q4_0".into(),
+            loaded: true,
+            self_test: "passed (2140 ms)".into(),
+            last_millis: 2200,
+            working: self.held.borrow().len(),
+            ..Default::default()
+        }
+    }
+    fn check_model(&self, _: &str) -> Result<u64, String> {
+        Ok(2_369_545_000)
     }
 }

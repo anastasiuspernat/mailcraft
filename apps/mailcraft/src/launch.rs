@@ -31,13 +31,22 @@ pub fn start(job: impl FnOnce() -> Arrival + Send + 'static, wake: impl Fn() + S
     rx
 }
 
+/// The sample is the one with three accounts (`--sample-accounts`).
+pub static SEVERAL_ACCOUNTS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// The mailbox to start with and the file it is kept in (none for the sample, or without
 /// preferences), counting what is read of the file in `progress`, with what the owner is told
 /// first when the file couldn't be read, was damaged or was repaired.
 pub fn first_mailbox(sample: bool, chosen: Option<PathBuf>, progress: &OpenProgress) -> Arrival {
     let now = mailcraft_time::now();
     if sample {
-        return Arrival::opened(mailcraft_engine::sample::mailbox(now, mailcraft_time::local_offset_minutes(now)), None);
+        let offset = mailcraft_time::local_offset_minutes(now);
+        let mb = if SEVERAL_ACCOUNTS.load(std::sync::atomic::Ordering::Relaxed) {
+            mailcraft_engine::sample::several_accounts(now, offset)
+        } else {
+            mailcraft_engine::sample::mailbox(now, offset)
+        };
+        return Arrival::opened(mb, None);
     }
     let ours = chosen.is_none();
     let path = chosen.or_else(|| crate::default_mailbox_path().filter(|_| crate::prefs_enabled()));

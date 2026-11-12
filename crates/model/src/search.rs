@@ -866,6 +866,25 @@ impl Query {
         (0..self.terms.len()).any(|i| self.term_reads_body(i))
     }
 
+    /// Its plain words (no keyword, no `-` in front), as they were written, one space between
+    /// each: what a search by meaning reads.
+    pub fn free_text(&self) -> String {
+        let mut out: Vec<&str> = Vec::new();
+        for t in &self.terms {
+            if let (false, Kind::Words { fields: words::ALL, raw, .. }) = (t.negate, &t.kind) {
+                out.extend(raw.iter().map(String::as_str));
+            }
+        }
+        out.join(" ")
+    }
+
+    /// The query without its plain words ([`Query::free_text`]): what a message found by meaning
+    /// must still match (`from:`, dates, `is:`, words with `-` in front…).
+    pub fn without_free_text(&self) -> Query {
+        let terms = self.terms.iter().filter(|t| !matches!((t.negate, &t.kind), (false, Kind::Words { fields: words::ALL, .. }))).cloned().collect();
+        Query { terms }
+    }
+
     /// How many terms it has.
     pub fn len(&self) -> usize {
         self.terms.len()

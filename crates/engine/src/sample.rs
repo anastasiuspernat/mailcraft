@@ -337,6 +337,98 @@ pub fn mailbox(now: Timestamp, offset: i32) -> Mailbox {
     b.mb
 }
 
+/// The sample mailbox with two more accounts of the same owner (`--sample-accounts`): a home
+/// address and a band's, each with mail in its Inbox, a draft and sent mail, and Priya Nair a
+/// VIP. For trying All Inboxes, VIPs, Flagged, All Drafts and All Sent.
+pub fn several_accounts(now: Timestamp, offset: i32) -> Mailbox {
+    let mut mb = mailbox(now, offset);
+    let home =
+        mb.add_account(mailcraft_model::Account { name: HOME.1.into(), email: HOME.1.into(), display_name: HOME.0.into(), ..Default::default() });
+    let band =
+        mb.add_account(mailcraft_model::Account { name: BAND.1.into(), email: BAND.1.into(), display_name: BAND.0.into(), ..Default::default() });
+    mb.set_vip(PRIYA.1, true);
+    let mut b = Builder { mb, account: home, today: DateTime::from_timestamp(now, offset).date, offset, n: 1_000 };
+    let inbox = b.folder(FolderKind::Inbox);
+    let id = b.mail(
+        inbox,
+        ROSA,
+        &[HOME],
+        "Sunday lunch at ours?",
+        b.at(0, 9, 12),
+        "Hi love,\n\nAre you free for lunch on Sunday at one? Dad is making the lemon cake. Let me know by Friday so I can shop.\n\nRosa",
+    );
+    b.edit(id, |m| m.read = false);
+    let id = b.mail(
+        inbox,
+        AIRLINE,
+        &[HOME],
+        "Your flight NW 214 was rebooked",
+        b.at(0, 7, 45),
+        "Your flight NW 214 to Lisbon on Friday was moved to 09:40 because of a schedule change. Your seat stays the same. Check in opens 24 hours before departure.",
+    );
+    b.edit(id, |m| m.read = false);
+    b.mail(
+        inbox,
+        GROCER,
+        &[HOME],
+        "20% off fresh produce this weekend",
+        b.at(1, 8, 0),
+        "This weekend only: 20% off all fresh produce in store and online. Use code FRESH20 at checkout.",
+    );
+    let drafts = b.folder(FolderKind::Drafts);
+    let id = b.mail(drafts, HOME, &[ROSA], "Re: Sunday lunch at ours?", b.at(0, 9, 30), "Sounds lovely, I'll bring");
+    b.edit(id, |m| m.draft = true);
+    let sent = b.folder(FolderKind::Sent);
+    b.mail(
+        sent,
+        HOME,
+        &[ROSA],
+        "Photos from the trip",
+        b.at(2, 19, 5),
+        "Here are the photos from the coast. The one with the lighthouse is my favourite.",
+    );
+
+    b.account = band;
+    let inbox = b.folder(FolderKind::Inbox);
+    let id = b.mail(
+        inbox,
+        MARCO,
+        &[BAND],
+        "Rehearsal moved to Thursday 7 pm",
+        b.at(0, 8, 20),
+        "Hi all,\n\nThe hall is booked on Wednesday, so rehearsal moves to Thursday at 7 pm. Please confirm you can make it by tomorrow.\n\nMarco",
+    );
+    b.edit(id, |m| (m.read, m.flag) = (false, FlagStatus::Flagged));
+    let id = b.mail(
+        inbox,
+        PRIYA,
+        &[BAND],
+        "Poster for the Friday gig",
+        b.at(1, 16, 40),
+        "I made a draft poster for Friday's gig. Could you check the set times before I print it?",
+    );
+    b.edit(id, |m| m.read = false);
+    b.mail(
+        inbox,
+        VENUE,
+        &[BAND],
+        "Your booking is confirmed",
+        b.at(3, 11, 0),
+        "Booking confirmed: The Lantern Room, Friday, doors at 8 pm. Load-in from 6 pm.",
+    );
+    let sent = b.folder(FolderKind::Sent);
+    b.mail(sent, BAND, &[MARCO], "Setlist for Friday", b.at(1, 21, 15), "Here's the setlist: we open with the new one and close with the cover.");
+    b.mb
+}
+
+const HOME: (&str, &str) = ("Avery Quinn", "avery.quinn@home.example");
+const BAND: (&str, &str) = ("Avery Quinn", "avery@bandhall.example");
+const ROSA: (&str, &str) = ("Rosa Quinn", "rosa@family.example");
+const AIRLINE: (&str, &str) = ("Northwind Air", "trips@northwind-air.example");
+const GROCER: (&str, &str) = ("Greenleaf Grocers", "offers@greenleaf.example");
+const MARCO: (&str, &str) = ("Marco Bell", "marco@bandhall.example");
+const VENUE: (&str, &str) = ("The Lantern Room", "bookings@lanternroom.example");
+
 fn people(b: &mut Builder) {
     let person = |p: (&str, &str), title: &str, company: &str, phone: &str| {
         let (first, last) = p.0.rsplit_once(' ').unwrap_or((p.0, ""));

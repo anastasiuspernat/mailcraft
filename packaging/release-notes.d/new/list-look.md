@@ -1,0 +1,1 @@
+- The message list: the selected message is a solid accent card with white text and no outline, sender names are bold and a point smaller, and the date headings (Today, Yesterday, Monday…) are off by default, with a switch in File › Options › Mail as well as View › Arrange By › Show in Groups.

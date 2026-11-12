@@ -44,7 +44,44 @@ pub struct Row {
     /// For a conversation's row: it is open, and its messages are listed under it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub open: bool,
+    /// The smart Inbox: a row that stands for rows folded away ("3 more from Shop"), or, when they
+    /// are shown, the one that folds them again. Its `id` is the first of them, its copy
+    /// [`MORE_COPY`], its `members` all their messages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub more: Option<More>,
+    /// The smart Inbox: a row shown with the one above it (a sender's other mail, shown whole),
+    /// which takes no heading of its own.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub grouped: bool,
+    /// The smart Inbox: a row of the Priority section at the top of Primary.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub priority: bool,
+    /// A search found it by meaning alone: it hasn't the search's words.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub meaning: bool,
 }
+
+/// What a "more" row of the smart Inbox stands for ([`Row::more`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct More {
+    /// What `view.smartGroup` shows or folds: `priority`, or `from:` and a sender's address.
+    pub key: String,
+    /// How many rows it stands for.
+    pub count: usize,
+    /// The senders of those rows, the first three that differ, as they are shown.
+    pub names: Vec<String>,
+    /// How many other senders there are beyond `names`.
+    pub others: usize,
+    /// Whether the rows are shown (above it) rather than folded away.
+    pub open: bool,
+}
+
+/// The copy number of a "more" row ([`Row::more`]), which no message's own row has.
+pub const MORE_COPY: u16 = u16::MAX;
+
+/// The heading of the Priority section at the top of Primary.
+pub const PRIORITY: &str = "Priority";
 
 impl Row {
     /// The row of one message, `copy` of its rows.
@@ -59,6 +96,10 @@ impl Row {
             copy,
             under: None,
             open: false,
+            more: None,
+            grouped: false,
+            priority: false,
+            meaning: false,
         }
     }
 
@@ -195,6 +236,12 @@ fn view_folders(s: &Session) -> (bool, HashSet<Id>) {
     let mb = &s.mailbox;
     let folder = s.view.folder;
     let scope = if Query::parse(&s.view.search).is_empty() { Scope::Folder } else { s.view.scope };
+    // A mailbox of every account's mail is its folders, whatever a search's scope but every mailbox.
+    if let Some(which) = crate::all::in_view(s)
+        && scope != Scope::Everywhere
+    {
+        return (false, crate::all::folders(mb, which));
+    }
     // Deleted and junk mail stays out of a search of a whole mailbox (`account`) or of all.
     let hidden = |account: Option<Id>| -> HashSet<Id> {
         mb.folders
@@ -265,8 +312,15 @@ pub(crate) fn lists(s: &Session, ids: &[Id]) -> std::collections::HashSet<Id> {
     let kept = s.kept();
     // (The folder's messages are looked through only for conversations of a Gmail category.)
     let gmail = crate::gmail::Shown::of(s, s.mailbox.messages.values().map(|m| m.as_ref()));
+    let smart = crate::ai::Shown::of(s, s.mailbox.messages.values().map(|m| m.as_ref()));
+    let all = crate::all::in_view(s);
     let shows = |m: &Message| {
-        in_view(m) && ((gmail.as_ref().is_none_or(|g| g.keeps(m)) && filtered(s, m, &me)) || kept.as_ref().is_some_and(|kept| kept.contains(&m.id)))
+        in_view(m)
+            && ((gmail.as_ref().is_none_or(|g| g.keeps(m))
+                && smart.as_ref().is_none_or(|g| g.keeps(m))
+                && all.is_none_or(|a| crate::all::keeps(&s.mailbox, a, m))
+                && filtered(s, m, &me))
+                || kept.as_ref().is_some_and(|kept| kept.contains(&m.id)))
     };
     ids.iter().copied().filter(|id| s.mailbox.message(*id).is_some_and(shows)).collect()
 }
@@ -286,17 +340,31 @@ pub(crate) fn listing(s: &Session, decided: &HashMap<Id, bool>, searched: &HashM
     let looked = looked_at(s, everywhere, &folders);
     // A Gmail category of the Inbox shows the Inbox's mail Gmail put in it (#911).
     let gmail = crate::gmail::Shown::of(s, looked.iter().copied());
+    // A part of the smart Inbox shows the Inbox's mail sorted into it.
+    let smart = crate::ai::Shown::of(s, looked.iter().copied());
+    // VIPs and Flagged keep their own mail of the folders they look in.
+    let all = crate::all::in_view(s);
+    // What the search finds by meaning, beside its words (`crate::ai::meaning_hits`).
+    let meaning = if query.is_empty() { HashSet::new() } else { crate::ai::meaning_hits(s, &looked) };
+    let mut by_meaning: HashSet<Id> = HashSet::new();
     let mut shown: Vec<&Message> = looked
         .into_iter()
         .filter(|m| {
             unfetched = unfetched.saturating_add(usize::from(m.unfetched));
+            let words = || match decided.get(&m.id).or_else(|| searched.get(&m.id).filter(|_| m.body_is_kept())) {
+                Some(hit) => *hit,
+                None => query.matches_in(m, |at| s.offset_at(at)),
+            };
             let hit = gmail.as_ref().is_none_or(|g| g.keeps(m))
+                && smart.as_ref().is_none_or(|g| g.keeps(m))
+                && all.is_none_or(|a| crate::all::keeps(mb, a, m))
                 && filtered(s, m, &me)
                 && (query.is_empty()
-                    || match decided.get(&m.id).or_else(|| searched.get(&m.id).filter(|_| m.body_is_kept())) {
-                        Some(hit) => *hit,
-                        None => query.matches_in(m, |at| s.offset_at(at)),
-                    });
+                    || words()
+                    || (meaning.contains(&m.id) && {
+                        by_meaning.insert(m.id);
+                        true
+                    }));
             // A selected message stays while it is selected, though it was read or its flag was
             // cleared; `in_view` above still applies, so one deleted, or moved out of the folder in
             // view, is gone.
@@ -382,7 +450,172 @@ pub(crate) fn listing(s: &Session, decided: &HashMap<Id, bool>, searched: &HashM
             }
         }
     }
+    let mut out = arrange_smart(s, out);
+    if !by_meaning.is_empty() {
+        for row in &mut out {
+            row.meaning = row.more.is_none() && row.members.iter().all(|id| by_meaning.contains(id));
+        }
+    }
     (out, kept_only, unfetched)
+}
+
+/// The list of a part of the smart Inbox, by date, newest first, without a search, as Apple's
+/// mail arranges it: in Primary (and All Mail, the whole Inbox) the time-sensitive mail first, in
+/// a Priority section that shows [`crate::ai::PRIORITY_ROWS`] and folds the rest into "n more
+/// from …"; in Transactions,
+/// Updates and Promotions each sender's mail together, its newest row and "n more from …" for
+/// the rest. A folded group opens with `view.smartGroup`. Any other list is left as it is.
+fn arrange_smart(s: &Session, rows: Vec<Row>) -> Vec<Row> {
+    let primary = match crate::ai::in_view(s) {
+        Some(category) => category == mailcraft_model::InboxCategory::Primary,
+        None if crate::ai::all_mail_in_view(s) => true,
+        None => return rows,
+    };
+    if s.view.sort != SortBy::Date || !s.view.sort_descending || !Query::parse(&s.view.search).is_empty() {
+        return rows;
+    }
+    let mb = &s.mailbox;
+    // A row with the rows of its open conversation under it, as one.
+    let mut blocks: Vec<Vec<Row>> = Vec::new();
+    for row in rows {
+        match blocks.last_mut() {
+            Some(block) if row.under.is_some() => block.push(row),
+            _ => blocks.push(vec![row]),
+        }
+    }
+    let open = |key: &str| s.view.smart_open.iter().any(|k| k == key);
+    let mut out: Vec<Row> = Vec::new();
+    if primary {
+        let urgent =
+            |b: &Vec<Row>| b.first().is_some_and(|h| h.members.iter().any(|id| mb.message(*id).is_some_and(|m| crate::ai::is_priority(s, m))));
+        let (priority, rest): (Vec<Vec<Row>>, Vec<Vec<Row>>) = blocks.into_iter().partition(urgent);
+        // Folding a single row away would save nothing.
+        let folds = priority.len() > crate::ai::PRIORITY_ROWS + 1;
+        let shown = !folds || open(PRIORITY);
+        let mut hidden: Vec<Row> = Vec::new();
+        for (i, block) in priority.into_iter().enumerate() {
+            let past = i >= crate::ai::PRIORITY_ROWS;
+            for mut row in block {
+                if row.under.is_none() {
+                    row.group = (i == 0).then(|| PRIORITY.to_string());
+                    row.category = false;
+                    row.priority = true;
+                    if past {
+                        hidden.push(row.clone());
+                    }
+                }
+                if shown || !past {
+                    out.push(row);
+                }
+            }
+        }
+        if folds && let Some(more) = more_row(s, PRIORITY, &hidden, shown) {
+            out.push(more);
+        }
+        let start = out.len();
+        out.extend(rest.into_iter().flatten());
+        if let Some(rest) = out.get_mut(start..) {
+            regroup(s, rest);
+        }
+    } else {
+        // Each sender's rows, in the order of their newest.
+        let sender = |b: &Vec<Row>| b.first().and_then(|h| mb.message(h.id)).map(|m| m.from.email.trim().to_lowercase()).filter(|e| !e.is_empty());
+        let mut at: HashMap<String, usize> = HashMap::new();
+        let mut groups: Vec<(Option<String>, Vec<Vec<Row>>)> = Vec::new();
+        for block in blocks {
+            match sender(&block) {
+                Some(key) => match at.get(&key) {
+                    Some(i) => {
+                        if let Some(group) = groups.get_mut(*i) {
+                            group.1.push(block);
+                        }
+                    }
+                    None => {
+                        at.insert(key.clone(), groups.len());
+                        groups.push((Some(key), vec![block]));
+                    }
+                },
+                None => groups.push((None, vec![block])),
+            }
+        }
+        for (address, blocks) in groups {
+            let mut blocks = blocks.into_iter();
+            out.extend(blocks.next().unwrap_or_default());
+            let rest: Vec<Vec<Row>> = blocks.collect();
+            let Some(address) = address.filter(|_| !rest.is_empty()) else { continue };
+            let key = format!("from:{address}");
+            let shown = open(&key);
+            let heads: Vec<Row> = rest.iter().filter_map(|b| b.first().cloned()).collect();
+            if shown {
+                for mut row in rest.into_iter().flatten() {
+                    if row.under.is_none() {
+                        row.grouped = true;
+                        row.group = None;
+                    }
+                    out.push(row);
+                }
+            }
+            if let Some(more) = more_row(s, &key, &heads, shown) {
+                out.push(more);
+            }
+        }
+        regroup(s, &mut out);
+    }
+    out
+}
+
+/// The "more" row of the smart Inbox for `heads`, the rows it folds away or that are shown above
+/// it ([`Row::more`]).
+fn more_row(s: &Session, key: &str, heads: &[Row], open: bool) -> Option<Row> {
+    let first = heads.first()?;
+    let mut names: Vec<String> = Vec::new();
+    let mut others: HashSet<String> = HashSet::new();
+    for head in heads {
+        let Some(m) = s.mailbox.message(head.id) else { continue };
+        let name = m.from.display().to_string();
+        if names.contains(&name) || others.contains(&name) {
+            continue;
+        }
+        if names.len() < 3 {
+            names.push(name);
+        } else {
+            others.insert(name);
+        }
+    }
+    Some(Row {
+        id: first.id,
+        members: heads.iter().flat_map(|h| h.members.iter().copied()).collect(),
+        others: Vec::new(),
+        unread: heads.iter().map(|h| h.unread).sum(),
+        group: None,
+        category: false,
+        copy: MORE_COPY,
+        under: None,
+        open: false,
+        more: Some(More { key: key.to_string(), count: heads.len(), names, others: others.len(), open }),
+        grouped: true,
+        priority: first.priority,
+        meaning: false,
+    })
+}
+
+/// The date headings of `rows` again, after the smart Inbox moved rows about: a row shown with
+/// the one above it, or a "more" row, takes none.
+fn regroup(s: &Session, rows: &mut [Row]) {
+    let mut last: Option<Heading> = None;
+    let today = s.today();
+    for row in rows.iter_mut().filter(|r| r.under.is_none()) {
+        row.group = None;
+        row.category = false;
+        if !s.prefs.show_groups || row.grouped || row.more.is_some() {
+            continue;
+        }
+        let heading = s.mailbox.message(row.id).and_then(|m| heading(s, m, today));
+        if heading != last {
+            row.group = heading.as_ref().map(Heading::label);
+            last = heading;
+        }
+    }
 }
 
 /// `shown` in the order of a sort by name or size (From, Subject, Size): pinned first, ids
@@ -566,7 +799,10 @@ pub fn position_of(rows: &[Row], id: Id, copy: u16) -> Option<usize> {
 }
 
 /// How many messages (or conversations) the list shows: one listed under several categories
-/// counts once, and the messages listed under an open conversation are its row's.
+/// counts once, the messages listed under an open conversation are its row's, and those the
+/// smart Inbox folded into "n more from …" count as listed.
 pub fn listed(rows: &[Row]) -> usize {
-    rows.iter().filter(|r| r.copy == 0 && r.under.is_none()).count()
+    // What the smart Inbox folded away is in the list all the same.
+    let folded: usize = rows.iter().filter_map(|r| r.more.as_ref()).filter(|m| !m.open).map(|m| m.count).sum();
+    rows.iter().filter(|r| r.copy == 0 && r.under.is_none()).count().saturating_add(folded)
 }

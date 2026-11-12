@@ -549,6 +549,8 @@ fn message() -> impl Strategy<Value = Message> {
             held: String::new(),
             sending: false,
             answers: None,
+            // Local to this computer: never in a file (`Insight`).
+            insight: None,
             kept: None,
             original: None,
             parts_removed: false,

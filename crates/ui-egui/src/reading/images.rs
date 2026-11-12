@@ -44,6 +44,11 @@ const IDLE_SECONDS: f64 = 5.0;
 
 /// Textures are made in steps of this many pixels of width.
 const WIDTH_STEP: u32 = 64;
+/// How many pixels across a blurred picture is decoded to: too few for anything in it to be
+/// made out once stretched.
+const BLUR_WIDTH: u32 = 12;
+/// How many blurred pictures are kept.
+const BLURRED_KEPT: usize = 64;
 
 /// Most different pictures of one message that are shown; the rest are placeholders.
 pub const MAX_PICTURES_PER_MESSAGE: usize = 200;
@@ -289,6 +294,8 @@ pub struct Pictures {
     decodes: usize,
     /// Pictures from the web, by their address as the message wrote it.
     remote: HashMap<Arc<str>, RemoteEntry>,
+    /// Pictures drawn blurred ([`Pictures::blurred`]), oldest first.
+    blurred: Vec<(Arc<Vec<u8>>, egui::TextureHandle)>,
 }
 
 impl Pictures {
@@ -440,6 +447,29 @@ impl Pictures {
         picture
     }
 
+    /// `data` drawn blurred (an NSFW sender's): decoded to [`BLUR_WIDTH`] pixels across and
+    /// stretched smoothly over its rectangle, so nothing of it can be made out. Kept apart from
+    /// the pictures drawn sharp, at most [`BLURRED_KEPT`].
+    pub fn blurred(&mut self, ctx: &egui::Context, data: &Arc<Vec<u8>>) -> Picture {
+        self.asked_at = Some(ctx.input(|i| i.time));
+        if let Some((_, texture)) = self.blurred.iter().find(|(d, _)| Arc::ptr_eq(d, data)) {
+            return Picture::Ready(texture.clone());
+        }
+        let frame = frame(ctx);
+        if self.decoded_in == Some(frame) {
+            return Picture::Pending;
+        }
+        self.decoded_in = Some(frame);
+        let max_side = u32::try_from(ctx.input(|i| i.max_texture_side)).unwrap_or(MAX_TEXTURE_SIDE);
+        let Some(image) = decode(data, max_side, BLUR_WIDTH) else { return Picture::Failed };
+        let texture = ctx.load_texture("mailcraft-blurred-picture", image, egui::TextureOptions::LINEAR);
+        if self.blurred.len() >= BLURRED_KEPT {
+            drop(self.blurred.remove(0));
+        }
+        self.blurred.push((data.clone(), texture.clone()));
+        Picture::Ready(texture)
+    }
+
     /// At the end of a frame: once no picture has been asked for for [`IDLE_SECONDS`] (no message
     /// with pictures is shown), let go of every texture; they are made again when wanted. Until
     /// then the cache is bounded by [`CACHE_BYTES`] and [`CACHE_PICTURES`] alone, so scrolling
@@ -460,7 +490,10 @@ impl Pictures {
             for entry in &mut self.entries {
                 entry.texture = None;
             }
+            self.blurred.clear();
         }
+        // A blurred picture whose bytes nothing else holds can't be asked for again.
+        self.blurred.retain(|(data, _)| Arc::strong_count(data) > 1);
         !idle && self.entries.iter().any(|e| e.texture.is_some())
     }
 

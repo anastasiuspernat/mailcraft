@@ -29,6 +29,7 @@ const OTHER_WRITERS: &[(&str, &str)] = &[
     ("crates/engine/src/store_stream.rs", "the mailbox file's time"),
     ("crates/engine/src/store_before.rs", "its tests"),
     ("crates/engine/src/words.rs", "the search index"),
+    ("crates/engine/src/vectors.rs", "the meaning index for search by meaning: numbers, never a sender's bytes"),
     ("crates/engine/src/io.rs", "reads a file named from outside"),
     ("crates/engine/src/import_pst.rs", "the import's own report"),
     ("crates/net/src/update_download.rs", "a new version of the program, checked by its signature"),

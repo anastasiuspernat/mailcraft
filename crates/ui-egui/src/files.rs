@@ -40,6 +40,10 @@ pub(crate) enum AfterPick {
     Tree,
     /// Ask for the picked .pst file's password and place, then import it ([`crate::import_pst`]).
     Pst,
+    /// Use the picked file as the smart Inbox's model (`ai.options`), after checking it.
+    Model,
+    /// Use the picked file as search by meaning's embedding model, after checking it.
+    EmbedModel,
 }
 
 impl FileDialogRequest {
@@ -180,6 +184,16 @@ pub(crate) fn open(app: &mut MailApp, purpose: &str) {
     let _ = ask(app, FileDialogRequest::Open { purpose: purpose.to_string() }, AfterPick::Open(purpose.to_string(), asking));
 }
 
+/// Pick the smart Inbox's model file.
+pub(crate) fn pick_model(app: &mut MailApp) {
+    let _ = ask(app, FileDialogRequest::Open { purpose: "model".to_string() }, AfterPick::Model);
+}
+
+/// Choose search by meaning's embedding model (a GGUF file).
+pub(crate) fn pick_embed_model(app: &mut MailApp) {
+    let _ = ask(app, FileDialogRequest::Open { purpose: "model".to_string() }, AfterPick::EmbedModel);
+}
+
 fn ask(app: &mut MailApp, req: FileDialogRequest, after: AfterPick) -> Result<Value, String> {
     if app.file_dialog.is_some() {
         app.status(tl!("A file dialog is already open."));
@@ -240,6 +254,8 @@ pub(crate) fn poll(app: &mut MailApp) -> Option<Result<Value, String>> {
         AfterPick::Open(purpose, asking) => opened_path(app, &purpose, &path, asking),
         AfterPick::Tree => app.run("ui.dialog", json!({"name": "importTree", "path": path})),
         AfterPick::Pst => app.run("ui.dialog", json!({"name": "importPst", "path": path})),
+        AfterPick::Model => crate::ai_options::use_model(app, &path),
+        AfterPick::EmbedModel => crate::ai_options::use_embed_model(app, &path),
         AfterPick::Export { command, mut params } => {
             if let Some(o) = params.as_object_mut() {
                 o.insert("path".into(), json!(path));

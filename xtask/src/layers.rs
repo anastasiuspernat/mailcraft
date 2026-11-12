@@ -54,6 +54,9 @@ pub const TABLE: &[(&str, Class)] = &[
     // Exchange Web Services over any HTTP, the same: no sockets, no browser APIs, and builds for the browser.
     ("ews", Class::Layer(3)),
     ("net", Class::Layer(3)),
+    // The smart Inbox's model (llama.cpp, in a worker process): the apps alone use it
+    // (`APP_ONLY_MEMBERS`), so the engine and the window build for the browser without it.
+    ("ai", Class::Layer(3)),
     ("engine", Class::Layer(4)),
     ("mcp", Class::Layer(5)),
     ("ui-egui", Class::Layer(6)),
@@ -86,6 +89,11 @@ pub const UI_CRATES: &[&str] = &["egui", "eframe", "winit", "egui_kittest", "rfd
 /// quit the platform's way, `-[NSApplication terminate:]` on macOS) because ending the process is
 /// the desktop app's decision, never a library's.
 pub const APP_ONLY_CRATES: &[&str] = &["dispatch2"];
+
+/// Workspace crates only the apps (the `Exempt` binaries) may depend on, by short name: the
+/// model runner (`ai`) needs a C++ build and the operating system's processes, which the engine,
+/// the MCP server and the window must never pull in.
+pub const APP_ONLY_MEMBERS: &[&str] = &["ai"];
 
 /// First layer allowed to use UI crates.
 pub const UI_MIN_LAYER: u8 = 6;
@@ -182,6 +190,10 @@ pub fn check(crates: &[Crate]) -> Vec<Violation> {
             if d.workspace {
                 if class == Class::Standalone {
                     out.push(Violation::StandaloneHasWorkspaceDep { krate: c.name.clone(), dep: d.name.clone() });
+                    continue;
+                }
+                if APP_ONLY_MEMBERS.contains(&short_name(&d.name)) {
+                    out.push(Violation::AppOnly { krate: c.name.clone(), dep: d.name.clone() });
                     continue;
                 }
                 match classify(&d.name) {

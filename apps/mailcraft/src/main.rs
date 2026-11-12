@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! MailCraft desktop app.
 //!
-//! Usage: `mailcraft [--control <port> [--control-agents-only]] [--sample] [--mailbox <file>] [files or mailto: links…]`
+//! Usage: `mailcraft [--control <port> [--control-agents-only]] [--sample | --sample-accounts] [--mailbox <file>] [files or mailto: links…]`
 //!
 //! The mailbox lives in `<settings>/mailbox.mailcraft` (or the file `--mailbox` names) and is saved
 //! as you go. `--sample` opens the sample mailbox instead and keeps nothing. On the command line
@@ -21,6 +21,7 @@
 #![cfg_attr(all(target_os = "windows", not(debug_assertions)), windows_subsystem = "windows")]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+mod ai_runner;
 mod alerts;
 #[cfg(target_os = "macos")]
 mod apple_events;
@@ -39,6 +40,8 @@ mod desktop_icons;
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
 mod desktop_theme;
 mod diagnostics;
+#[cfg(target_os = "macos")]
+mod dock_badge;
 #[cfg(test)]
 mod ews_mail_flow;
 mod ews_runner;
@@ -171,6 +174,9 @@ impl eframe::App for App {
             bar.pump(&mut self.0, ctx);
         }
         self.0.logic(ctx);
+        // Unread mail of every account's Inbox on the Dock icon (counted once per change).
+        #[cfg(target_os = "macos")]
+        dock_badge::show(mailcraft_engine::all::unread_in_inboxes(&mut self.0.session));
         // Another mailbox file opened in the window (or File › New): the lock follows it (#517).
         if let Some(guard) = &self.4
             && !self.0.is_opening()
@@ -1990,6 +1996,11 @@ fn already_open() {
 }
 
 fn main() -> eframe::Result {
+    // The smart Inbox's worker process: no window, no log file, no settings; it serves the
+    // program that started it over its standard input and output (`ai_runner`).
+    if std::env::args_os().nth(1).is_some_and(|a| a == ai_runner::WORKER_ARG) {
+        ai_runner::worker_main();
+    }
     // First, so the panic hook and every start-up warning are recorded (`logging`).
     let logger = logging::install();
     logging::install_panic_hook();
@@ -2017,6 +2028,11 @@ fn main() -> eframe::Result {
             "--control" => control_port = args.next().and_then(|p| p.parse().ok()),
             "--control-agents-only" => control_agents_only = true,
             "--sample" => sample = true,
+            // The sample with three accounts, for All Inboxes, VIPs and the rest.
+            "--sample-accounts" => {
+                sample = true;
+                launch::SEVERAL_ACCOUNTS.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
             "--mailbox" => mailbox_path = args.next().map(PathBuf::from),
             // Started by the version this one replaced: it is let go first.
             self_update::AFTER_UPDATE => after_update = true,
@@ -2174,6 +2190,7 @@ fn main() -> eframe::Result {
                 services.window_identity =
                     Some(mailcraft_ui_egui::windows::WindowIdentity { icon: app_icon().map(std::sync::Arc::new), app_id: Some(APP_ID.into()) });
                 services.update_start = update_start;
+                services.ai = Some(Box::new(ai_runner::Host::new(ctx.clone())));
                 services.claim_mailbox =
                     claimer.map(|c| Box::new(move |path: &std::path::Path| c.claim(path)) as Box<dyn Fn(&std::path::Path) -> bool>);
                 let mut app = MailApp::new(session, services);

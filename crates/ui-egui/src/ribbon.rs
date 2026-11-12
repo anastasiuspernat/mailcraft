@@ -136,6 +136,7 @@ pub(crate) enum Menu {
     MoveFolder,
     ReadingPane,
     GmailCategories,
+    SmartInbox,
     Preview,
     ArrangeBy,
     Theme,
@@ -983,6 +984,10 @@ fn view_of_any(app: &MailApp) -> Tab {
     if mailcraft_engine::gmail::offered(&app.session).is_none() {
         layout.push(Item::big_menu("gmailCategories", "inbox", "Gmail\nCategories", "Gmail Categories", Menu::GmailCategories).at(0, 3));
     }
+    // The smart Inbox's parts, or the whole Inbox: while it is on.
+    if app.session.prefs.ai.enabled {
+        layout.push(Item::big_menu("smartInbox", "inbox", "Smart\nInbox", "Smart Inbox", Menu::SmartInbox).at(0, 3));
+    }
     layout.push(Item::big_menu("ribbonLayout", "ribbon", "Ribbon\nLayout", "Ribbon Layout", Menu::RibbonLayout).at(3, 4));
     Tab::of(vec![
         g("Current View", vec![Item::big_menu("changeView", "changeView", "Change\nView", "Change View", Menu::ChangeView).at(0, 1)]),
@@ -1423,6 +1428,13 @@ fn menu_contents(ui: &mut Ui, app: &mut MailApp, menu: Menu) {
             let tabs = app.session.view.gmail_tabs;
             mi_check(ui, app, "As Folders", !tabs, "view.gmailCategories", json!({"value": "folders"}));
             mi_check(ui, app, "As Tabs above the Inbox", tabs, "view.gmailCategories", json!({"value": "tabs"}));
+        }
+        Menu::SmartInbox => {
+            let cur = app.session.view.inbox_category;
+            for c in mailcraft_model::InboxCategory::ALL {
+                mi_check(ui, app, c.name(), cur == Some(c), "view.inboxCategory", json!({"category": c.code()}));
+            }
+            mi_check(ui, app, "All Mail", cur.is_none(), "view.inboxCategory", json!({"category": "all"}));
         }
         Menu::Preview => {
             let lines = app.session.prefs.preview_lines;

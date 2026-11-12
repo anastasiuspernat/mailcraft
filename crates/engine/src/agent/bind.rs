@@ -140,7 +140,10 @@ pub fn object(id: &str) -> Option<Object> {
         | "ui.updateInstall"
         | "ui.dismissUpdateNotice"
         | "ui.dismissSettingsNotice"
-        | "ui.reportProblem" => Options,
+        | "ui.reportProblem"
+        | "ai.options"
+        | "ai.clearInsights"
+        | "ai.reindexVectors" => Options,
         _ => return None,
     })
 }

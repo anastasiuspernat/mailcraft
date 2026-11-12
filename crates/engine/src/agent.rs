@@ -245,6 +245,24 @@ const SAFE: &[&str] = &[
     "view.tasks",
     "view.readingPane",
     "view.gmailCategories",
+    // The smart Inbox: local to this computer, undoable, and what a model wrote is data (#ai).
+    "view.inboxCategory",
+    "view.smartGroup",
+    "ai.status",
+    "ai.summarize",
+    "ai.setCategory",
+    "ai.setPriority",
+    // Mailboxes made of every account's mail, and the senders the owner marks as VIPs.
+    "view.allInboxes",
+    "view.vips",
+    "view.allFlagged",
+    "view.allDrafts",
+    "view.allSent",
+    "view.showAllMailboxes",
+    "people.setVip",
+    "people.setJunk",
+    "people.setNsfw",
+    "people.setEmoji",
     "view.folderPane",
     "view.conversations",
     "view.sort",
@@ -485,6 +503,10 @@ const SETTINGS: &[&str] = &[
     "file.options",
     // Work Offline: turned off, what waits in the Outbox goes out.
     "sync.offline",
+    // Turns the smart Inbox on (a model reads the owner's mail) or forgets what it made.
+    "ai.options",
+    "ai.clearInsights",
+    "ai.reindexVectors",
     "calendar.deleteAnsweredRequests",
     "rules.add",
     "rules.remove",
@@ -526,6 +548,9 @@ const SETTINGS: &[&str] = &[
 ];
 
 const NEVER: &[&str] = &[
+    // The host's side of the smart Inbox: what a model made of the mail is the host's to say.
+    "ai.request",
+    "ai.apply",
     // The host's side of a synchronisation: what came from a server is the host's to say.
     "sync.request",
     "sync.apply",
@@ -1000,6 +1025,8 @@ fn taken(params: &Value) -> Vec<Id> {
 /// messages (`ids`, or `id`), never leaving them to the window's selection, which the owner may
 /// have changed a moment ago (#620). The owner's own runs keep the selection.
 pub const NEEDS_IDS: &[&str] = &[
+    "ai.setCategory",
+    "ai.setPriority",
     "mail.delete",
     "mail.deletePermanently",
     "mail.move",

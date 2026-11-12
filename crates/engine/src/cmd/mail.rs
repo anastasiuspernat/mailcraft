@@ -712,11 +712,34 @@ fn archive(s: &mut Session, v: &Value) -> CmdResult {
 
 fn junk(s: &mut Session, v: &Value) -> CmdResult {
     let ids = targets_whole(s, v)?;
-    move_to_kind(s, &ids, FolderKind::Junk)
+    // Each message moved there counts against its sender: at the third, their later mail is
+    // marked as junk ([`mailcraft_model::sender_marks`]). Mail already in Junk E-mail doesn't.
+    let senders: Vec<String> = ids
+        .iter()
+        .filter_map(|id| s.mailbox.message(*id))
+        .filter(|m| s.mailbox.folder(m.folder).is_none_or(|f| f.kind != FolderKind::Junk))
+        .map(|m| m.from.email.clone())
+        .collect();
+    let mut r = move_to_kind(s, &ids, FolderKind::Junk)?;
+    let mut learned = Vec::new();
+    for a in senders {
+        if s.mailbox.count_junk(&a) {
+            learned.push(a.trim().to_lowercase());
+        }
+    }
+    if let Some(o) = r.as_object_mut() {
+        o.insert("learnedJunk".into(), json!(learned));
+    }
+    Ok(r)
 }
 
 fn not_junk(s: &mut Session, v: &Value) -> CmdResult {
     let ids = targets_whole(s, v)?;
+    // Not Junk forgets the senders' marks.
+    let senders: Vec<String> = ids.iter().filter_map(|id| s.mailbox.message(*id)).map(|m| m.from.email.clone()).collect();
+    for a in &senders {
+        s.mailbox.set_learned_junk(a, false);
+    }
     move_to_kind(s, &ids, FolderKind::Inbox)
 }
 

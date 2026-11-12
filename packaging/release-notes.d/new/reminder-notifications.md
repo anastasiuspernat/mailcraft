@@ -1,0 +1,1 @@
+- A reminder falling due is told of by the system's own notification (the notification centre on macOS, a toast on Windows, the desktop's notifications on Linux and the BSDs) instead of the reminders window coming up over your work; the window comes up by itself only when no notification could be shown, and a click on the notification or View › Reminders brings it up.

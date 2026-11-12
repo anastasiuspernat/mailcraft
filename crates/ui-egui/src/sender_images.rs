@@ -155,7 +155,8 @@ pub fn picture(app: &mut MailApp, ctx: &egui::Context, m: &Message, who: &Addres
     if !app.ui.sender_images || app.services.sender_images.is_none() {
         return None;
     }
-    if app.session.mailbox.in_junk(m.folder) {
+    // Not for mail in Junk E-mail, nor for a sender marked NSFW (their initials instead).
+    if app.session.mailbox.in_junk(m.folder) || app.session.mailbox.is_nsfw(&who.email) {
         return None;
     }
     tick(app, ctx);

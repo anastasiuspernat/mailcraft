@@ -10,6 +10,16 @@ description = "MailCraft desktop app"
 [lints]
 workspace = true
 
+[features]
+default = ["ai"]
+# The smart Inbox's model on the processor (llama.cpp; building it needs CMake, a C++ compiler and
+# libclang). Without it the AI page says this build has no model engine.
+ai = ["mailcraft-ai/llama"]
+# On the graphics card: Vulkan (an Intel Mac through MoltenVK, Windows, Linux) or Metal (Apple
+# silicon, built with GGML_METAL=ON).
+ai-vulkan = ["mailcraft-ai/vulkan"]
+ai-metal = ["mailcraft-ai/metal"]
+
 [dependencies]
 mailcraft-time = { workspace = true }
 mailcraft-model = { workspace = true }
@@ -21,6 +31,8 @@ mailcraft-ui-egui = { workspace = true }
 mailcraft-control-key = { workspace = true }
 # Sockets: Send/Receive runs on a background thread.
 mailcraft-net = { workspace = true }
+# The smart Inbox's model, run in a worker process (`ai_runner.rs`).
+mailcraft-ai = { workspace = true }
 # Exchange server accounts (#252): the requests and the readers of the answers; the HTTPS is `mailcraft-net`'s.
 mailcraft-ews = { workspace = true }
 # `clipboard`: since 0.37 eframe has copy and paste behind a feature of its own (on by default, and
@@ -75,7 +87,8 @@ block2 = { version = "0.6", default-features = false, features = ["std"] }
 # AppKit's window, for one safe class call: no automatic window tabs (#253: the View menu's greyed
 # Show Tab Bar). The same project's bindings, already in the tree through winit and muda, with
 # the same features.
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSWindow", "NSApplication"] }
+# And the Dock icon's badge (`dock_badge.rs`): the unread mail of every account's Inbox.
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSResponder", "NSWindow", "NSApplication", "NSDockTile"] }
 # Quitting the macOS way (`quit_macos.rs`): `-[NSApplication terminate:]` is scheduled on the main
 # queue, because eframe closing the window can crash AppKit (its Touch Bar). The scheduling is
 # `dispatch_async` on the main queue, from the same project as objc2 (MIT, Zlib or Apache-2.0),

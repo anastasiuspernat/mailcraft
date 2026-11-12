@@ -507,7 +507,7 @@ fn open(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
 }
 
 /// A labelled row: the label on the left, the control after it.
-fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
+pub(crate) fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
         let t = Tokens::get(ui.ctx());
         // A label longer than the column, as a translation can be, pushes its control along.
@@ -625,6 +625,22 @@ fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
     if ui.checkbox(&mut quote, tl!("Include the original message when replying")).changed() {
         set(app, json!({"quoteOnReply": quote}));
     }
+    let mut all = prefs.all_mailboxes;
+    let switch = ui
+        .checkbox(&mut all, tl!("Show All Inboxes, VIPs, Flagged, All Drafts and All Sent in the folder pane"))
+        .on_hover_text(tl!("Mail of every account in one place, when you have two accounts or more."));
+    app.hit.add("optionAllMailboxes", 0, switch.rect);
+    if switch.changed() {
+        let _ = app.run("view.showAllMailboxes", json!({"value": all}));
+    }
+    let mut groups = prefs.show_groups;
+    let switch = ui
+        .checkbox(&mut groups, tl!("Group messages by date (Today, Yesterday, Monday…)"))
+        .on_hover_text(tl!("Headings in the message list. Also View › Arrange By › Show in Groups."));
+    app.hit.add("optionGroups", 0, switch.rect);
+    if switch.changed() {
+        let _ = app.run("view.groups", json!({"value": groups}));
+    }
     let mut in_window = app.ui.replies_in_window;
     let switch = ui
         .checkbox(&mut in_window, tl!("Open new messages, replies and forwards in a new window"))
@@ -663,6 +679,8 @@ fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
     section(ui, tl!("Pictures in mail"), t);
     crate::reading::remote::options(app, ui, t);
     crate::sender_images::options(app, ui, t);
+    section(ui, tl!("Smart Inbox and summaries"), t);
+    crate::ai_options::options(app, ui, t);
     section(ui, tl!("Accounts"), t);
     let mut remember = app.ui.remember_sign_in;
     if ui

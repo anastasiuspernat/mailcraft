@@ -12,7 +12,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use mailcraft_model::{GmailCategory, Id, Mailbox, Message};
+use mailcraft_model::{GmailCategory, Id, InboxCategory, Mailbox, Message};
 
 use crate::Session;
 
@@ -72,6 +72,16 @@ pub struct FolderCounts {
     accounts: HashMap<Id, Held>,
     /// What each of Gmail's categories holds in each folder (#911): only messages that are in one.
     gmail: HashMap<(Id, GmailCategory), Held>,
+    /// What each part of the smart Inbox holds in each folder: every message, one not sorted yet
+    /// as Primary ([`crate::ai::category_of`]).
+    smart: HashMap<(Id, InboxCategory), Held>,
+    /// What the flagged messages of each folder come to (the Flagged mailbox, [`crate::all`]).
+    flagged: HashMap<Id, Held>,
+    /// What the VIPs' messages of each folder come to (the VIPs mailbox), and the VIPs they were
+    /// counted for: the mailbox's when the counts were made (a change to them is a change to the
+    /// mailbox, which counts again).
+    vips: HashMap<Id, Held>,
+    vip_list: Arc<HashSet<String>>,
     /// How many messages were counted: the mailbox's, when the counts are of it.
     messages: usize,
 }
@@ -82,7 +92,18 @@ impl FolderCounts {
         let mut folders: HashMap<Id, InFolder> = HashMap::with_capacity(mb.folders.len());
         let mut accounts: HashMap<Id, Held> = HashMap::with_capacity(mb.accounts.len());
         let mut gmail: HashMap<(Id, GmailCategory), Held> = HashMap::new();
+        let mut smart: HashMap<(Id, InboxCategory), Held> = HashMap::new();
+        let mut flagged: HashMap<Id, Held> = HashMap::new();
+        let mut vips: HashMap<Id, Held> = HashMap::new();
+        let vip_list: Arc<HashSet<String>> = Arc::new(mb.vips.iter().cloned().collect());
         for m in mb.messages.values() {
+            if is_flagged(m) {
+                flagged.entry(m.folder).or_default().add(m.read);
+            }
+            if is_vip(&vip_list, m) {
+                vips.entry(m.folder).or_default().add(m.read);
+            }
+            smart.entry((m.folder, crate::ai::category_of(m))).or_default().add(m.read);
             let f = folders.entry(m.folder).or_default();
             f.held.add(m.read);
             f.ids.push(m.id);
@@ -91,7 +112,7 @@ impl FolderCounts {
                 gmail.entry((m.folder, category)).or_default().add(m.read);
             }
         }
-        FolderCounts { folders, accounts, gmail, messages: mb.messages.len() }
+        FolderCounts { folders, accounts, gmail, smart, flagged, vips, vip_list, messages: mb.messages.len() }
     }
 
     /// What `folder` holds (nothing, for a folder with no mail or none of that id).
@@ -118,6 +139,21 @@ impl FolderCounts {
     /// What the messages of `folder` that Gmail put in `category` come to (#911).
     pub fn gmail(&self, folder: Id, category: GmailCategory) -> Held {
         self.gmail.get(&(folder, category)).copied().unwrap_or_default()
+    }
+
+    /// What the messages of `folder` in the smart Inbox's `category` come to.
+    pub fn smart(&self, folder: Id, category: InboxCategory) -> Held {
+        self.smart.get(&(folder, category)).copied().unwrap_or_default()
+    }
+
+    /// What the flagged messages of `folder` come to.
+    pub fn flagged(&self, folder: Id) -> Held {
+        self.flagged.get(&folder).copied().unwrap_or_default()
+    }
+
+    /// What the messages of `folder` from the owner's VIPs come to.
+    pub fn vips(&self, folder: Id) -> Held {
+        self.vips.get(&folder).copied().unwrap_or_default()
     }
 
     /// What the messages of `account` come to, whichever folders they are in.
@@ -152,6 +188,19 @@ impl FolderCounts {
                 if let Some(g) = w.gmail_category.and_then(|c| self.gmail.get_mut(&(w.folder, c))) {
                     g.take(w.read);
                 }
+                if let Some(c) = self.smart.get_mut(&(w.folder, crate::ai::category_of(w))) {
+                    c.take(w.read);
+                }
+                if is_flagged(w)
+                    && let Some(c) = self.flagged.get_mut(&w.folder)
+                {
+                    c.take(w.read);
+                }
+                if is_vip(&self.vip_list, w)
+                    && let Some(c) = self.vips.get_mut(&w.folder)
+                {
+                    c.take(w.read);
+                }
                 self.messages = self.messages.saturating_sub(1);
             }
             if let Some(n) = now {
@@ -159,6 +208,13 @@ impl FolderCounts {
                 self.accounts.entry(n.account).or_default().add(n.read);
                 if let Some(c) = n.gmail_category {
                     self.gmail.entry((n.folder, c)).or_default().add(n.read);
+                }
+                self.smart.entry((n.folder, crate::ai::category_of(n))).or_default().add(n.read);
+                if is_flagged(n) {
+                    self.flagged.entry(n.folder).or_default().add(n.read);
+                }
+                if is_vip(&self.vip_list, n) {
+                    self.vips.entry(n.folder).or_default().add(n.read);
                 }
                 self.messages = self.messages.saturating_add(1);
             }
@@ -187,16 +243,23 @@ impl FolderCounts {
         self.folders.retain(|_, f| f.held.total > 0 || !f.ids.is_empty());
         self.accounts.retain(|_, a| a.total > 0);
         self.gmail.retain(|_, g| g.total > 0);
+        self.smart.retain(|_, g| g.total > 0);
+        self.flagged.retain(|_, g| g.total > 0);
+        self.vips.retain(|_, g| g.total > 0);
         true
     }
 
-    /// A message of `folder`, in `account` (and in Gmail's `gmail` category, if any), is now read
-    /// (`read`) or unread: its folder's, its account's and its category's unread follow, for counts
-    /// kept through read marks rather than counted again.
-    pub fn read_changed(&mut self, folder: Id, account: Id, gmail: Option<GmailCategory>, read: bool) {
-        let category = gmail.and_then(|c| self.gmail.get_mut(&(folder, c)));
+    /// Message `m` is now read or unread (`m.read`): its folder's, its account's, its categories'
+    /// and (when it is flagged or from a VIP) Flagged's and VIPs' unread follow, for counts kept
+    /// through read marks rather than counted again.
+    pub fn read_changed(&mut self, m: &Message) {
+        let (folder, read) = (m.folder, m.read);
+        let category = m.gmail_category.and_then(|c| self.gmail.get_mut(&(folder, c)));
+        let smart = self.smart.get_mut(&(folder, crate::ai::category_of(m)));
+        let flagged = if is_flagged(m) { self.flagged.get_mut(&folder) } else { None };
+        let vip = if is_vip(&self.vip_list, m) { self.vips.get_mut(&folder) } else { None };
         let folder = self.folders.get_mut(&folder).map(|f| &mut f.held);
-        for held in [folder, self.accounts.get_mut(&account), category].into_iter().flatten() {
+        for held in [folder, self.accounts.get_mut(&m.account), category, smart, flagged, vip].into_iter().flatten() {
             held.unread = if read { held.unread.saturating_sub(1) } else { held.unread.saturating_add(1) };
         }
     }
@@ -226,4 +289,14 @@ impl Session {
         let key = (self.rev(), self.mailbox.messages.len());
         self.counts_cache.as_ref().filter(|(at, _)| *at == key).map(|(_, counts)| counts.as_ref())
     }
+}
+
+/// Whether `m` counts for Flagged.
+fn is_flagged(m: &Message) -> bool {
+    m.flag == mailcraft_model::FlagStatus::Flagged
+}
+
+/// Whether `m` counts for VIPs, of the VIPs `vips` (addresses in lower case).
+fn is_vip(vips: &HashSet<String>, m: &Message) -> bool {
+    !vips.is_empty() && vips.contains(&m.from.email.trim().to_lowercase())
 }

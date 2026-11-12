@@ -451,6 +451,8 @@ pub fn show(app: &mut MailApp, ui: &mut Ui, message: &Arc<Message>, place: Place
     // Links whose text names one place and which go to another wear a mark (#508); not in a
     // quote or a preview, which are the owner's own.
     let flagged = if matches!(place, Place::Pane | Place::Window(_)) { super::warnings::mismatched(app, message) } else { Vec::new() };
+    // An NSFW sender's pictures are drawn blurred, unless the owner unblurred this message.
+    let blur = blurred(app, message);
     let store = Store::of(&ctx);
     let mut store = store.lock().unwrap_or_else(|e| e.into_inner());
     #[cfg(test)]
@@ -543,7 +545,7 @@ pub fn show(app: &mut MailApp, ui: &mut Ui, message: &Arc<Message>, place: Place
     let mut state = app.text_selection.state(place);
     // A copy that waited for the layout to be whole is due now.
     let due = state.as_deref_mut().and_then(|state| state.bind(&entry.doc, entry.laid.done));
-    let (origin, asked) = paint(ui, &entry.laid, &t, access, state, &flagged);
+    let (origin, asked) = paint(ui, &entry.laid, &t, access, state, &flagged, blur);
     #[cfg(test)]
     {
         entry.origin = origin;
@@ -667,11 +669,17 @@ struct Hover {
     note: Option<String>,
 }
 
+/// Whether `m`'s pictures are drawn blurred: its sender is marked NSFW, and the owner hasn't
+/// unblurred it.
+pub(crate) fn blurred(app: &MailApp, m: &Message) -> bool {
+    app.session.mailbox.is_nsfw(&m.from.email) && !app.unblurred.contains(&m.id)
+}
+
 /// Paint what is in view of a layout with what is selected in it, and follow the pointer: over
 /// its links, and through its text when it selects (`state` is the selection of the place the
 /// layout is shown in). Where its top left is, and what its menu was asked to do.
 /// `flagged` are the addresses of the links that go somewhere other than their text says: each
-/// wears a frame, and its tip says so.
+/// wears a frame, and its tip says so. `blur`: its pictures are drawn blurred.
 pub fn paint(
     ui: &mut Ui,
     laid: &Laid,
@@ -679,6 +687,7 @@ pub fn paint(
     access: Access,
     mut state: Option<&mut select::PlaceState>,
     flagged: &[String],
+    blur: bool,
 ) -> (egui::Pos2, Option<Action>) {
     let (area, _) = ui.allocate_exact_size(vec2(laid.size.x.max(1.0), laid.size.y.max(1.0)), Sense::hover());
     let origin = area.min.to_vec2();
@@ -742,7 +751,10 @@ pub fn paint(
             }
             ItemKind::Picture(picture) => {
                 let store = pictures.get_or_insert_with(|| Pictures::of(&ctx));
-                let state = store.lock().unwrap_or_else(|e| e.into_inner()).texture(&ctx, &picture.data, rect.size());
+                let state = {
+                    let mut store = store.lock().unwrap_or_else(|e| e.into_inner());
+                    if blur { store.blurred(&ctx, &picture.data) } else { store.texture(&ctx, &picture.data, rect.size()) }
+                };
                 match state {
                     Picture::Ready(texture) => {
                         painter.image(texture.id(), rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);

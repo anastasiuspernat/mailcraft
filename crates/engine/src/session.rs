@@ -295,6 +295,20 @@ pub struct ViewState {
     /// Gmail's categories as a row of tabs above a Gmail Inbox's list, in place of the five
     /// folders under it in the folder pane (#911; `view.gmailCategories`). Off: as folders.
     pub gmail_tabs: bool,
+    /// The part of the smart Inbox an Inbox shows (`view.inboxCategory`): `None` for all of it, as
+    /// while the smart Inbox is off. Turning it on chooses Primary.
+    pub inbox_category: Option<mailcraft_model::InboxCategory>,
+    /// The mailbox made of every account's mail the list shows (All Inboxes, VIPs, Flagged, All
+    /// Drafts, All Sent; `view.allMailbox`), with the folder it was chosen over: it is shown while
+    /// that is still the folder in view ([`crate::all::in_view`]), so that anything that shows a
+    /// folder leaves it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub all: Option<(crate::all::AllMailbox, Id)>,
+    /// The groups of the smart Inbox's list shown whole (`view.smartGroup`): `priority`, and
+    /// `from:` and a sender's address. Not kept between sessions, which would write addresses
+    /// into the view's settings.
+    #[serde(skip)]
+    pub smart_open: Vec<String>,
     pub search: String,
     pub scope: Scope,
     pub reading_pane: Pane,
@@ -336,6 +350,9 @@ impl Default for ViewState {
             filter: Filter::All,
             gmail: None,
             gmail_tabs: false,
+            inbox_category: None,
+            all: None,
+            smart_open: Vec::new(),
             search: String::new(),
             scope: Scope::Folder,
             reading_pane: Pane::Right,
@@ -433,6 +450,8 @@ pub(crate) struct ListOf {
     filter: Filter,
     /// The Gmail category it shows, if any (#911).
     gmail: Option<(Id, mailcraft_model::GmailCategory)>,
+    /// The part of the smart Inbox it shows, if any.
+    smart: Option<mailcraft_model::InboxCategory>,
     search: Option<(mailcraft_model::search::Query, Scope)>,
     /// The day, the first day of the week and the zone, for a search with dates in it:
     /// `received:today` is other messages tomorrow (#329).
@@ -446,7 +465,7 @@ impl ListOf {
         let query = mailcraft_model::search::Query::parse(&view.search);
         let when = query.has_dates().then(when);
         let search = (!query.is_empty()).then_some((query, view.scope));
-        ListOf { folder: view.folder, filter: view.filter, gmail: view.gmail, search, when }
+        ListOf { folder: view.folder, filter: view.filter, gmail: view.gmail, smart: view.inbox_category, search, when }
     }
 }
 
@@ -825,8 +844,14 @@ pub struct Prefs {
     pub quote_on_reply: bool,
     /// Lines of body text under each message in the list (0–3).
     pub preview_lines: u8,
-    /// The list has group headings (Today, Yesterday…; `view.groups`). Off: one continuous list.
+    /// The list has group headings (Today, Yesterday…; `view.groups`). Off: one continuous list,
+    /// the default. (Kept as `dateGroups`: a `showGroups` saved when it was on by default is let
+    /// go, and the list starts without them.)
+    #[serde(rename = "dateGroups")]
     pub show_groups: bool,
+    /// All Inboxes, VIPs, Flagged, All Drafts and All Sent at the top of the folder pane
+    /// (`view.showAllMailboxes`).
+    pub all_mailboxes: bool,
     /// Each row of the list is one line: sender, subject, time and marks (`view.oneLine`).
     #[serde(skip_serializing_if = "is_false")]
     pub one_line: bool,
@@ -889,6 +914,9 @@ pub struct Prefs {
     /// mail that is sent waits in the Outbox. Off unless the owner turns it on; kept between runs.
     #[serde(skip_serializing_if = "is_false")]
     pub offline: bool,
+    /// The smart Inbox and summaries (File › Options › AI; `ai.options`).
+    #[serde(skip_serializing_if = "crate::ai::AiPrefs::is_default")]
+    pub ai: crate::ai::AiPrefs,
 }
 
 impl Default for Prefs {
@@ -905,7 +933,8 @@ impl Default for Prefs {
             default_reminder: Some(15),
             quote_on_reply: true,
             preview_lines: 1,
-            show_groups: true,
+            show_groups: false,
+            all_mailboxes: true,
             one_line: false,
             sync_limit: 500,
             sync_minutes: 5,
@@ -924,6 +953,7 @@ impl Default for Prefs {
             zoom: Prefs::ZOOM_DEFAULT,
             recent_searches: Vec::new(),
             offline: false,
+            ai: crate::ai::AiPrefs::default(),
         }
     }
 }
@@ -1194,6 +1224,8 @@ pub struct Session {
     /// is disabled, the window offers nothing, and no move is put in a request for Gmail's API.
     /// Never saved.
     pub gmail_category_moves: bool,
+    /// The smart Inbox's and summaries' work with the host's model ([`crate::ai`]). Never saved.
+    pub ai: crate::ai::AiState,
     /// The word index of the mailbox file, while [`Session::index_words`] is on and the mailbox
     /// is kept in a file ([`crate::words`]).
     #[cfg(not(target_arch = "wasm32"))]
@@ -1310,6 +1342,7 @@ impl Session {
             index_words: false,
             interface_language: mailcraft_i18n::Lang::English,
             gmail_category_moves: crate::gmail::GMAIL_CATEGORY_MOVES,
+            ai: Default::default(),
             #[cfg(not(target_arch = "wasm32"))]
             words: None,
         };
@@ -1748,8 +1781,9 @@ impl Session {
             return None;
         }
         let same = |a: &Message, b: &Message| {
-            (a.folder, a.account, a.received, a.date, a.pinned, a.importance, a.unfetched, a.gmail_category)
-                == (b.folder, b.account, b.received, b.date, b.pinned, b.importance, b.unfetched, b.gmail_category)
+            (a.folder, a.account, a.received, a.date, a.pinned, a.importance, a.unfetched, a.gmail_category, crate::ai::category_of(a))
+                == (b.folder, b.account, b.received, b.date, b.pinned, b.importance, b.unfetched, b.gmail_category, crate::ai::category_of(b))
+                && crate::ai::arranged_by(a) == crate::ai::arranged_by(b)
                 && a.subject == b.subject
                 && a.from == b.from
                 && a.categories == b.categories
@@ -1877,7 +1911,7 @@ impl Session {
         {
             let counts = Arc::make_mut(counts);
             for m in read.iter().filter_map(|id| mb.message(*id)) {
-                counts.read_changed(m.folder, m.account, m.gmail_category, m.read);
+                counts.read_changed(m);
             }
             *at = (rev, mb.messages.len());
         }
@@ -1910,10 +1944,20 @@ impl Session {
             self.zone_key(),
             self.words_finished(),
             self.prefs.show_groups,
-            // (Not saved with the rest of the view, so not in its text.)
-            self.view.gmail,
+            // (Not saved with the rest of the view, so not in its text.) And while there is a
+            // search, what search by meaning has: the meanings of searches, the messages indexed.
+            (self.view.gmail, &self.view.smart_open, self.meaning_key()),
             serde_json::to_string(&self.view).unwrap_or_default()
         )
+    }
+
+    /// What a search's list is built again for, from search by meaning: a search's meaning came,
+    /// or more messages were read for it. Nothing without a search.
+    fn meaning_key(&self) -> (u64, usize) {
+        if self.view.search.trim().is_empty() || !crate::ai::searches_by_meaning(self) {
+            return (0, 0);
+        }
+        (self.ai.meaning_rev, self.ai.vectors.as_ref().map_or(0, |v| v.len()))
     }
 
     /// The zone dates are searched in, for the keys searches are kept under (#329): its name, or
