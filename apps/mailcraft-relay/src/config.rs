@@ -90,6 +90,10 @@ pub struct Config {
     /// By account address (lower case).
     #[serde(default)]
     pub seen: BTreeMap<String, Seen>,
+    /// The six digits an iPad pairs with (`pair`): made once, kept until the owner asks for a
+    /// new one (`code --new`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub pairing_code: String,
 }
 
 /// The relay's folder.
@@ -168,6 +172,17 @@ pub fn client_id(provider: OAuthProvider) -> String {
         OAuthProvider::Google => ("MAILCRAFT_GOOGLE_CLIENT_ID", option_env!("MAILCRAFT_GOOGLE_CLIENT_ID")),
     };
     std::env::var(name).ok().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| built.unwrap_or_default().to_string())
+}
+
+/// The pairing code in the settings at `path`: made and kept the first time, or anew when `renew`.
+pub fn pairing_code(path: &Path, renew: bool) -> Result<String, String> {
+    let mut config = Config::load(path)?;
+    let good = config.pairing_code.len() == 6 && config.pairing_code.bytes().all(|b| b.is_ascii_digit());
+    if renew || !good {
+        config.pairing_code = crate::pair::new_code();
+        config.save(path)?;
+    }
+    Ok(config.pairing_code)
 }
 
 /// The incoming server for `email`: the provider's when it is known, else `imap.<domain>`, and

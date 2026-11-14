@@ -62,3 +62,44 @@ fn five_wrong_codes_end_it() {
     }
     assert!(server.join().unwrap().is_err());
 }
+
+#[test]
+fn the_kept_code_is_made_once_and_renewed_on_request() {
+    let dir = std::env::temp_dir().join(format!("mailcraft-relay-code-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let path = crate::config::file_in(&dir);
+    let first = crate::config::pairing_code(&path, false).unwrap();
+    assert_eq!(crate::config::pairing_code(&path, false).unwrap(), first, "kept");
+    let mut renewed = crate::config::pairing_code(&path, true).unwrap();
+    // (One in a million: the same digits again.)
+    if renewed == first {
+        renewed = crate::config::pairing_code(&path, true).unwrap();
+    }
+    assert_ne!(renewed, first);
+    assert_eq!(crate::config::pairing_code(&path, false).unwrap(), renewed);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn listening_for_good_pairs_and_blocks_guessing() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || crate::pair::serve_forever(&listener, || Some("424242".to_string()), move |d| tx.send(d).unwrap()));
+    for _ in 0..5 {
+        assert!(say(port, &format!(r#"{{"code":"111111","token":"{}"}}"#, token())).contains("wrong code"));
+    }
+    // Blocked now, even with the right code.
+    assert!(say(port, &format!(r#"{{"code":"424242","token":"{}"}}"#, token())).contains("too many tries"));
+    assert!(rx.try_recv().is_err());
+}
+
+#[test]
+fn listening_for_good_pairs() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || crate::pair::serve_forever(&listener, || Some("424242".to_string()), move |d| tx.send(d).unwrap()));
+    assert!(say(port, &format!(r#"{{"code":"424242","token":"{}"}}"#, token())).contains("\"ok\":true"));
+    assert_eq!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap().token, token());
+}

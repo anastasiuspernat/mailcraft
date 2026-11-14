@@ -43,7 +43,7 @@ impl Shared {
     }
 
     /// Change the settings with `f`, read fresh from the file (the pairing may have changed it).
-    fn update(&self, f: impl FnOnce(&mut Config)) {
+    pub(crate) fn update(&self, f: impl FnOnce(&mut Config)) {
         let Ok(_held) = self.lock.lock() else { return };
         match Config::load(&self.path) {
             Ok(mut config) => {
@@ -56,7 +56,7 @@ impl Shared {
         }
     }
 
-    fn read(&self) -> Option<Config> {
+    pub(crate) fn read(&self) -> Option<Config> {
         let _held = self.lock.lock().ok()?;
         Config::load(&self.path).map_err(|e| log::warn!("{e}")).ok()
     }
@@ -175,6 +175,27 @@ pub fn run(folder: &Path) -> Result<(), String> {
         log::warn!("no iPad is paired yet: `mailcraft-relay pair`");
     }
     log::info!("the relay is running for {} account(s)", config.accounts.len());
+    // Pairing, on the home network, for as long as the relay runs.
+    match std::net::TcpListener::bind(("0.0.0.0", crate::PAIR_PORT)) {
+        Ok(listener) => {
+            let shared = shared.clone();
+            let code_path = config::file_in(folder);
+            std::thread::spawn(move || {
+                crate::pair::serve_forever(
+                    &listener,
+                    || config::pairing_code(&code_path, false).map_err(|e| log::warn!("{e}")).ok(),
+                    |device| {
+                        shared.update(|c| {
+                            if !c.pair(device) {
+                                log::warn!("too many iPads are paired: the new one wasn't added");
+                            }
+                        })
+                    },
+                )
+            });
+        }
+        Err(e) => log::warn!("pairing isn't listened for (port {}: {e})", crate::PAIR_PORT),
+    }
     let threads: Vec<_> = config
         .accounts
         .into_iter()

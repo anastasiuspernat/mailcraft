@@ -69,7 +69,9 @@ fn pair_with(computer: &str, code: &str, token: &str) -> Result<String, String> 
         let relay = value.get("relay").and_then(|r| r.as_str()).unwrap_or("your computer");
         Ok(relay.chars().filter(|c| !c.is_control()).take(60).collect())
     } else if value.get("why").and_then(|w| w.as_str()) == Some("wrong code") {
-        Err("the code is wrong: type the one the relay shows".into())
+        Err("the code is wrong: type the one the relay shows (`mailcraft-relay code`)".into())
+    } else if value.get("why").and_then(|w| w.as_str()) == Some("too many tries") {
+        Err("too many wrong codes lately: try again in an hour".into())
     } else {
         Err("the relay said no".into())
     }

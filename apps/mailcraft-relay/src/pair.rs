@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: MailCraft contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
-//! Pairing an iPad, on the home network: the relay listens on [`crate::PAIR_PORT`] for ten
-//! minutes and shows a six-digit code and this computer's address; the iPad (File › Options ›
+//! Pairing an iPad, on the home network: the running relay listens on [`crate::PAIR_PORT`] for as
+//! long as it runs ([`serve_forever`]; `mailcraft-relay pair` listens for ten minutes by itself
+//! when the relay isn't running, [`serve`]), with the six-digit code kept in its settings
+//! (`mailcraft-relay code` shows it with this computer's address). The iPad (File › Options ›
 //! Push from your computer) connects, and sends one line of JSON with the code, its push address
 //! from Apple and its name. The relay answers with one line: yes, with this computer's name, or
-//! no. Five wrong codes end the pairing.
+//! no. After five wrong codes in an hour, every try is refused until the hour is up.
 //!
 //! What crosses the network is the push address and the code, and nothing else: a push address
 //! is no secret (only the owner's push key can send to it), but the code keeps somebody else on
@@ -20,8 +22,28 @@ use crate::config::Device;
 
 /// How long the relay waits for an iPad.
 pub const WAIT: Duration = Duration::from_secs(10 * 60);
-/// Wrong codes taken before the pairing ends.
+/// Wrong codes taken in an hour.
 const MOST_WRONG: usize = 5;
+/// How long a wrong code counts.
+const HOUR: Duration = Duration::from_secs(60 * 60);
+
+/// The wrong codes of the last hour.
+#[derive(Debug, Default)]
+pub struct Tries {
+    wrong: Vec<Instant>,
+}
+
+impl Tries {
+    /// Too many wrong codes lately: nothing is taken.
+    pub fn blocked(&mut self) -> bool {
+        self.wrong.retain(|t| t.elapsed() < HOUR);
+        self.wrong.len() >= MOST_WRONG
+    }
+
+    fn note_wrong(&mut self) {
+        self.wrong.push(Instant::now());
+    }
+}
 /// The longest line taken from an iPad.
 const MOST_LINE: usize = 2048;
 
@@ -81,12 +103,17 @@ pub fn home_address() -> Option<std::net::IpAddr> {
 }
 
 /// Answer one connection; `None` while nothing was paired by it.
-fn serve_one(stream: TcpStream, code: &str, wrong: &mut usize) -> Option<Device> {
+fn serve_one(stream: TcpStream, code: &str, tries: &mut Tries) -> Option<Device> {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
     let mut reader = BufReader::new(stream.try_clone().ok()?).take(MOST_LINE as u64);
     let mut line = String::new();
     reader.read_line(&mut line).ok()?;
+    if tries.blocked() {
+        let mut stream = stream;
+        let _ = stream.write_all(format!("{}\n", serde_json::json!({ "ok": false, "why": "too many tries" })).as_bytes());
+        return None;
+    }
     let heard = hear(&line, code);
     let reply = match &heard {
         Heard::Paired(_) => serde_json::json!({ "ok": true, "relay": computer_name() }),
@@ -98,7 +125,7 @@ fn serve_one(stream: TcpStream, code: &str, wrong: &mut usize) -> Option<Device>
     match heard {
         Heard::Paired(device) => Some(device),
         Heard::Wrong => {
-            *wrong += 1;
+            tries.note_wrong();
             None
         }
         Heard::Junk => None,
@@ -109,16 +136,16 @@ fn serve_one(stream: TcpStream, code: &str, wrong: &mut usize) -> Option<Device>
 pub fn serve(listener: &TcpListener, code: &str) -> Result<Device, String> {
     listener.set_nonblocking(true).map_err(|e| e.to_string())?;
     let started = Instant::now();
-    let mut wrong = 0;
+    let mut tries = Tries::default();
     while started.elapsed() < WAIT {
         match listener.accept() {
             Ok((stream, from)) => {
                 let _ = stream.set_nonblocking(false);
                 log::info!("pairing: a connection from {}", from.ip());
-                if let Some(device) = serve_one(stream, code, &mut wrong) {
+                if let Some(device) = serve_one(stream, code, &mut tries) {
                     return Ok(device);
                 }
-                if wrong >= MOST_WRONG {
+                if tries.blocked() {
                     return Err("too many wrong codes: pairing stopped".into());
                 }
             }
@@ -127,4 +154,25 @@ pub fn serve(listener: &TcpListener, code: &str) -> Result<Device, String> {
         }
     }
     Err("no iPad paired within ten minutes".into())
+}
+
+/// Listen on `listener` for as long as the relay runs: each connection is checked against the
+/// code `code` gives at the time (it may have been renewed), and an iPad that pairs goes to `paired`.
+pub fn serve_forever(listener: &TcpListener, code: impl Fn() -> Option<String>, paired: impl Fn(Device)) {
+    let mut tries = Tries::default();
+    for stream in listener.incoming() {
+        let Ok(stream) = stream else {
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        };
+        let from = stream.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
+        let Some(code) = code() else { continue };
+        match serve_one(stream, &code, &mut tries) {
+            Some(device) => {
+                log::info!("paired with an iPad at {from}");
+                paired(device);
+            }
+            None => log::info!("pairing: a connection from {from} paired nothing"),
+        }
+    }
 }

@@ -49,8 +49,14 @@ in): a *Desktop app* client in Google Cloud whose consent screen is *In producti
    asks for the password, not shown as you type), and checks that the Inbox opens. A Google
    Workspace address at a domain of its own takes `--google`. For a server it doesn't know, add
    `--server imap.example.com[:993]` (and `--user name` when that isn't the address).
-3. **Pair the iPad.** Run `mailcraft-relay pair`. It shows this computer's address and a six-digit
-   code. On the iPad: File › Options › **Push from your computer**, enter both and tap **Pair**.
+3. **Pair the iPad.** `add` ends by showing this computer's address and the six-digit pairing
+   code, and `mailcraft-relay code` shows them at any time (`code --new` makes a new code). On
+   the iPad, on the same home network: File › Options › **Push from your computer**, enter both
+   and tap **Pair**. The running relay listens for pairing for as long as it runs (on the home
+   network only; after five wrong codes in an hour it takes none until the hour is up), and
+   `mailcraft-relay pair` says when an iPad has paired. Pairing is the only time the iPad talks
+   to this computer: notifications reach it anywhere, through Apple, and nothing on this
+   computer is open to the internet.
    Windows may ask whether the relay may use the network: allow private networks. iPadOS asks
    whether MailCraft may find devices on your local network, and may show notifications: allow
    both.

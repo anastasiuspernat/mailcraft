@@ -23,7 +23,9 @@ MailCraft relay: tells MailCraft on your iPad when new mail arrives.
   mailcraft-relay remove you@example.com  stop watching it and forget its password
   mailcraft-relay apple-key AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --team-id XXXXXXXXXX
                                           the push key from your Apple developer account
-  mailcraft-relay pair                    pair an iPad (it shows a code to type on the iPad)
+  mailcraft-relay code [--new]            this computer's address and the pairing code to enter on
+                                          the iPad (--new: make a new code)
+  mailcraft-relay pair                    pair an iPad, and say when it has
   mailcraft-relay test                    send a test notification to the paired iPads
   mailcraft-relay run                     watch and notify, until stopped
   mailcraft-relay install                 start with Windows, without a window
@@ -71,6 +73,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
         "remove" => remove(&folder, rest),
         "apple-key" => apple_key(&folder, rest),
         "pair" => pair_ipad(&folder),
+        "code" => {
+            show_pairing(&folder, rest.iter().any(|a| a == "--new"))?;
+            Ok(())
+        }
         "test" => test(&folder),
         "run" => {
             logfile::start(&folder, true);
@@ -120,7 +126,15 @@ fn add(folder: &Path, args: &[String]) -> Result<(), String> {
             },
             &AtomicBool::new(false),
         )
-        .map_err(|e| format!("the sign-in didn't finish: {e}"))?;
+        .map_err(|e| {
+            let e = e.to_string();
+            if e.contains("did not grant Gmail") {
+                // Seen in a Google Cloud project set up minutes before: run it again.
+                "Google signed you in but left out Gmail access, which happens for a while after the app is set up in Google Cloud: run the same `add` again (and if Google shows a checkbox for Gmail, tick it)".to_string()
+            } else {
+                format!("the sign-in didn't finish: {e}")
+            }
+        })?;
         if tokens.refresh.is_empty() {
             return Err(format!("{whose} gave no lasting sign-in"));
         }
@@ -149,6 +163,8 @@ fn add(folder: &Path, args: &[String]) -> Result<(), String> {
     config.save(&path)?;
     println!("{email} is watched.");
     restart_if_installed();
+    println!();
+    show_pairing(folder, false)?;
     Ok(())
 }
 
@@ -185,19 +201,51 @@ fn apple_key(folder: &Path, args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn pair_ipad(folder: &Path) -> Result<(), String> {
-    let listener =
-        std::net::TcpListener::bind(("0.0.0.0", crate::PAIR_PORT)).map_err(|e| format!("port {} can't be listened on ({e})", crate::PAIR_PORT))?;
-    let code = pair::new_code();
+/// Whether a relay is running on this computer.
+fn running() -> bool {
+    std::net::TcpStream::connect(("127.0.0.1", crate::ONE_ONLY_PORT)).is_ok()
+}
+
+/// Print this computer's address and the pairing code (a new one when `renew`); the code.
+fn show_pairing(folder: &Path, renew: bool) -> Result<String, String> {
+    let code = config::pairing_code(&config::file_in(folder), renew)?;
     let address = pair::home_address().map(|ip| ip.to_string()).unwrap_or_else(|| "this computer's address".into());
-    println!("On the iPad: File › Options › Push from your computer, then enter");
+    println!("To pair an iPad (on the same home network as this computer), open MailCraft on it:");
+    println!("File › Options › Push from your computer, and enter");
     println!();
     println!("    Computer:  {address}");
     println!("    Code:      {code}");
     println!();
+    if !running() {
+        println!("(The relay listens for it while it runs: `mailcraft-relay run`, or `install`, or `pair` for ten minutes.)");
+    }
+    Ok(code)
+}
+
+fn pair_ipad(folder: &Path) -> Result<(), String> {
+    let path = config::file_in(folder);
+    let before = Config::load(&path)?.devices.len();
+    if running() {
+        show_pairing(folder, false)?;
+        println!("Waiting up to ten minutes for an iPad to pair…");
+        let started = std::time::Instant::now();
+        while started.elapsed() < pair::WAIT {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            let config = Config::load(&path)?;
+            if config.devices.len() > before
+                && let Some(device) = config.devices.last()
+            {
+                println!("Paired with {}.", device.name);
+                return Ok(());
+            }
+        }
+        return Err("no iPad paired within ten minutes (the relay goes on listening)".into());
+    }
+    let listener =
+        std::net::TcpListener::bind(("0.0.0.0", crate::PAIR_PORT)).map_err(|e| format!("port {} can't be listened on ({e})", crate::PAIR_PORT))?;
+    let code = show_pairing(folder, false)?;
     println!("Waiting up to ten minutes… (Windows may ask whether to let the relay use the network: allow private networks.)");
     let device = pair::serve(&listener, &code)?;
-    let path = config::file_in(folder);
     let mut config = Config::load(&path)?;
     if !config.pair(device.clone()) {
         return Err(format!("{} iPads are paired already: that is the most", config::MAX_DEVICES));
@@ -223,7 +271,14 @@ fn status(folder: &Path) -> Result<(), String> {
     println!("Accounts:");
     for a in &config.accounts {
         let kept = store::get(&a.secret_key()).is_some();
-        println!("  {} ({}:{}){}", a.email, a.server.host, a.server.port, if kept { "" } else { "  — nothing to sign in with" });
+        let note = if kept {
+            ""
+        } else if std::env::var_os("SSH_CONNECTION").is_some() {
+            "  — its sign-in can't be read over SSH (the running relay can)"
+        } else {
+            "  — nothing to sign in with: `add` it again"
+        };
+        println!("  {} ({}:{}){note}", a.email, a.server.host, a.server.port);
     }
     println!(
         "Paired iPads: {}",
