@@ -17,4 +17,7 @@
 pub mod appearance;
 pub mod auth_sheet;
 pub mod model;
+pub mod push;
+#[cfg(test)]
+mod push_tests;
 pub mod trackpad;

@@ -269,6 +269,11 @@ msgstr "Een codepunt, geschreven als U+2192 of 2192, of een decimaal getal na #.
 msgid "A colleague's calendar, by their address, with your work or school account. Kept on this computer only"
 msgstr "De agenda van een collega, op diens adres, met uw werk- of schoolaccount. Alleen op deze computer bewaard"
 
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "A computer of yours that is always on tells this iPad when new mail arrives, through Apple, even while MailCraft is closed. Install MailCraft relay there, run \"mailcraft-relay pair\", and enter what it shows."
+msgstr ""
+
 #. what a command says
 #: crates/model/src/mailbox.rs
 #, fuzzy
@@ -2668,6 +2673,11 @@ msgstr "De pagina gesloten? Dit opent de aanmeldingspagina van de provider opnie
 msgid "Closes this window. Nothing is kept."
 msgstr "Sluit dit venster. Er wordt niets bewaard."
 
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Code"
+msgstr ""
+
 #. command label
 #: crates/engine/src/cmd/mail.rs
 #, fuzzy
@@ -2721,6 +2731,11 @@ msgstr "Voltooid op {date}"
 #, fuzzy
 msgid "Completed."
 msgstr "Voltooid."
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Computer"
+msgstr ""
 
 #. command label, interface
 #: crates/ui-egui/src/lib.rs crates/ui-egui/src/unconfirmed.rs
@@ -4503,7 +4518,7 @@ msgid "For an account that signs in with Microsoft: the folders you keep under F
 msgstr "Voor een account dat zich aanmeldt met Microsoft: de mappen die u onder favorieten in Outlook bewaart, in dezelfde volgorde. Ze worden van de server gelezen en daar nooit gewijzigd. Zonder dit worden de favorieten getoond die u in MailCraft markeert."
 
 #. interface
-#: crates/ui-egui/src/ews_setup.rs
+#: crates/ui-egui/src/ews_setup.rs crates/ui-egui/src/push_options.rs
 #, fuzzy
 msgid "Forget"
 msgstr "Vergeten"
@@ -8015,6 +8030,11 @@ msgid "Not now: it is installed when you quit MailCraft."
 msgstr "Niet nu: het wordt geïnstalleerd wanneer u MailCraft afsluit."
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Not paired."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/compose.rs
 #, fuzzy
 msgid "Not saved"
@@ -8824,6 +8844,21 @@ msgstr "Pagina {page} van {pages}"
 msgid "Pages like this open in the browser, where scripts in them run. Open it only if you know who sent it and expect it."
 msgstr "Pagina's zoals deze openen in de browser, waarin scripts worden uitgevoerd. Open die alleen als u weet wie die heeft verzonden en u die verwacht."
 
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Pair"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Pair again"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Paired with {computer}."
+msgstr ""
+
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
 #, fuzzy
@@ -9254,6 +9289,11 @@ msgstr "Voorgesteld begin"
 #, fuzzy
 msgid "Proposed time"
 msgstr "Voorgestelde tijd"
+
+#. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Push from your computer"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/import_pst.rs
@@ -13834,6 +13874,11 @@ msgid "This file has a password. Nothing is imported without it."
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "This iPad has no push address: {why}"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/meeting_dialogs.rs
 #, fuzzy
 msgid "This invitation can't be answered from here, so no other time can be proposed for it."
@@ -14959,6 +15004,11 @@ msgstr "Wacht op de registratie van MailCraft bij Google"
 #, fuzzy
 msgid "Waiting for the approval stopped unexpectedly"
 msgstr "Het wachten op de goedkeuring is onverwacht gestopt"
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Waiting for this iPad's push address from Apple…"
+msgstr ""
 
 #. interface
 #: crates/ui-egui/src/credits.rs

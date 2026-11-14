@@ -155,6 +155,7 @@ pub mod people_view;
 mod pick_item;
 #[cfg(test)]
 mod pick_item_tests;
+pub mod push_options;
 pub mod reading;
 mod reminders;
 mod report_problem;
@@ -246,6 +247,8 @@ pub struct Services {
     /// Desktop: the smart Inbox's model, run by the host in a worker process ([`ai_host`]).
     /// `None` (the browser, a host without one): the smart Inbox's settings say so.
     pub ai: Option<Box<dyn ai_host::AiHost>>,
+    /// iPad: push notifications from the owner's own relay ([`push_options`]); `None` elsewhere.
+    pub push: Option<Box<dyn push_options::PushHost>>,
     /// Desktop: the icon and application id of the main window, which every other window of the
     /// system (reminders, messages) takes too.
     pub window_identity: Option<windows::WindowIdentity>,

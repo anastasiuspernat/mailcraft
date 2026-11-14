@@ -24,6 +24,8 @@
 pub const AVAILABLE: bool = false;
 
 #[cfg(not(target_arch = "wasm32"))]
+pub mod apns;
+#[cfg(not(target_arch = "wasm32"))]
 mod cert;
 #[cfg(not(target_arch = "wasm32"))]
 mod dns;
@@ -35,6 +37,8 @@ mod favorite_paths;
 pub mod gmail;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod graph;
+#[cfg(not(target_arch = "wasm32"))]
+mod h2;
 #[cfg(not(target_arch = "wasm32"))]
 mod http;
 #[cfg(not(target_arch = "wasm32"))]
@@ -63,11 +67,16 @@ mod transport;
 pub mod update;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod update_download;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod watch;
 
 // (`cfg(test)` on its own line: that is how clippy knows test code, which may unwrap.)
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod fake;
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+mod push_relay_tests;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod tests;

@@ -51,6 +51,9 @@
     <string>arm64</string>
   </array>
   <!-- Only the operating system's own encryption (TLS): exempt from export documentation. -->
+  <!-- Pairing with the owner's own push relay on the home network (File › Options). -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>MailCraft connects to MailCraft relay on your computer once, to pair for new-mail notifications.</string>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
 </dict>

@@ -26,6 +26,9 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
 - **A trackpad or mouse** (a Magic Keyboard's): two-finger scrolling scrolls what the pointer is
   over, coasting on after the fingers lift and slowing as the iPad's own lists do (a click, a
   touch or scrolling again stops it), and the pointer shows what it is over, as on a Mac.
+- **New-mail notifications while MailCraft is closed** come from MailCraft relay on a computer of
+  yours that is always on, paired in File › Options › Push from your computer
+  ([push-relay.md](push-relay.md)).
 - **Light and dark** follow the iPad's appearance (Settings › Display & Brightness, its schedule
   included) while File › Options › General › Theme is "Use system setting", the default.
 - **Interface size** starts at 110 % on a new iPad install (File › Options › General).

@@ -9,6 +9,7 @@
 //! There is no plain EXPUNGE and no CLOSE here, on purpose: both remove every message marked
 //! `\Deleted` in the mailbox, also those another program marked.
 
+mod idle;
 mod parse;
 mod password;
 #[cfg(test)]
@@ -18,6 +19,7 @@ mod utf7;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::{Read, Write};
 
+pub use idle::Idled;
 use parse::{Piece, Status, StatusLine, Value};
 pub use utf7::{decode_utf7, encode_utf7};
 
@@ -1207,6 +1209,8 @@ impl<S: Read + Write> Imap<S> {
 
 #[cfg(test)]
 mod gmail_tests;
+#[cfg(test)]
+mod idle_tests;
 #[cfg(test)]
 mod limits_tests;
 #[cfg(test)]

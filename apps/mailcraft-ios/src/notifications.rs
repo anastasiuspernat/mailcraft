@@ -102,6 +102,14 @@ impl Notifications {
     }
 }
 
+/// Ask the owner to allow notifications, when they haven't been asked yet (iPadOS asks once and
+/// remembers): the relay's need it as much as MailCraft's own.
+pub fn ask_permission() {
+    let answered = RcBlock::new(|_granted: Bool, _: *mut NSError| {});
+    let options = UNAuthorizationOptions::Alert | UNAuthorizationOptions::Sound | UNAuthorizationOptions::Badge;
+    UNUserNotificationCenter::currentNotificationCenter().requestAuthorizationWithOptions_completionHandler(options, &answered);
+}
+
 impl AlertHost for Notifications {
     fn show(&self, alert: &DesktopAlert) -> Result<(), String> {
         let Ok(mut permission) = self.permission.lock() else { return Err("the permission's state is lost".into()) };

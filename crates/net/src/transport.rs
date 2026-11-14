@@ -138,6 +138,33 @@ impl<'a> Stream<'a> {
         }
     }
 
+    /// The protocol the server agreed to during the handshake (ALPN), on an encrypted connection.
+    pub(crate) fn alpn(&self) -> Option<Vec<u8>> {
+        match &self.io {
+            Io::Plain(_) => None,
+            Io::Tls(tls) => tls.conn.alpn_protocol().map(<[u8]>::to_vec),
+        }
+    }
+
+    /// Wait up to `wait` for the next read from now on, and let the command under way take that
+    /// long too: for IDLE, which hears nothing for many minutes (`crate::watch`). Never for ever.
+    pub(crate) fn listen_for(&mut self, wait: Duration) -> std::io::Result<()> {
+        let tcp = match &self.io {
+            Io::Plain(tcp) => tcp,
+            Io::Tls(tls) => &tls.sock,
+        };
+        tcp.set_read_timeout(Some(wait.max(Duration::from_millis(1))))?;
+        self.patience = wait.saturating_add(COMMAND_TIMEOUT);
+        (self.since, self.moved) = (Instant::now(), 0);
+        Ok(())
+    }
+
+    /// Back to the waits a connection is opened with, after [`Stream::listen_for`].
+    pub(crate) fn listen_done(&mut self) -> std::io::Result<()> {
+        self.patience = COMMAND_TIMEOUT;
+        self.wait_for(IO_TIMEOUT)
+    }
+
     /// What every read and write begins with: the flag, and the time the command has had.
     fn before(&mut self, writing: bool) -> std::io::Result<()> {
         if self.cancel.is_some_and(|cancel| cancel.load(Ordering::Relaxed)) {

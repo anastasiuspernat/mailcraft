@@ -26,6 +26,8 @@ pub(crate) enum Purpose {
     Mail,
     /// A picture's web server: told that HTTP/1.1 is the one way of speaking that is spoken here.
     Picture,
+    /// Apple's push service, which speaks HTTP/2 ("h2") alone (`crate::apns`).
+    Push,
 }
 
 /// The TLS settings for `purpose`: the `ring` provider, TLS 1.2 and 1.3, and the system's verifier.
@@ -39,9 +41,11 @@ pub(crate) fn client_config(purpose: Purpose) -> Result<Arc<ClientConfig>, Strin
     }
     static MAIL: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     static PICTURE: OnceLock<Arc<ClientConfig>> = OnceLock::new();
+    static PUSH: OnceLock<Arc<ClientConfig>> = OnceLock::new();
     let cache = match purpose {
         Purpose::Mail => &MAIL,
         Purpose::Picture => &PICTURE,
+        Purpose::Push => &PUSH,
     };
     if let Some(config) = cache.get() {
         return Ok(config.clone());
@@ -97,6 +101,9 @@ fn build(provider: Arc<CryptoProvider>, verifier: Arc<dyn ServerCertVerifier>, p
         // The one way of speaking that is spoken here, said during the handshake: a server that
         // has others as well then knows which to use.
         config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    }
+    if purpose == Purpose::Push {
+        config.alpn_protocols = vec![b"h2".to_vec()];
     }
     Ok(Arc::new(config))
 }

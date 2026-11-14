@@ -90,6 +90,8 @@ mod coast;
 mod coast_tests;
 #[cfg(target_os = "ios")]
 mod notifications;
+#[cfg(target_os = "ios")]
+mod push_host;
 /// The iPad's keychain, through the same module as the desktop's credential store.
 #[cfg(target_os = "ios")]
 #[path = "../../mailcraft/src/secrets.rs"]
@@ -269,7 +271,7 @@ mod ios {
     /// look-up of its provider, the keychain, and notifications. (Signing in with Microsoft or
     /// Google, and the rest the desktop host offers, come later.)
     fn services(ctx: egui::Context) -> Services {
-        let (sync_ctx, mx_ctx, test_ctx, sign_in_ctx, ai_ctx) = (ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx);
+        let (sync_ctx, mx_ctx, test_ctx, sign_in_ctx, ai_ctx, push_ctx) = (ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx);
         let sync_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel = sync_cancel.clone();
         Services {
@@ -323,6 +325,8 @@ mod ios {
             alert: Some(Box::new(crate::notifications::Notifications::default())),
             // The smart Inbox with Apple's on-device model.
             ai: Some(Box::new(crate::ai_host::AppleModel::new(ai_ctx))),
+            // New-mail notifications from the owner's own relay, paired in File › Options.
+            push: Some(Box::new(crate::push_host::Push::new(push_ctx, data_dir().map(|d| d.join("push.json"))))),
             ..Default::default()
         }
     }

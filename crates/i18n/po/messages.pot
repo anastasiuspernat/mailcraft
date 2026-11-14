@@ -228,6 +228,11 @@ msgstr ""
 msgid "A colleague's calendar, by their address, with your work or school account. Kept on this computer only"
 msgstr ""
 
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "A computer of yours that is always on tells this iPad when new mail arrives, through Apple, even while MailCraft is closed. Install MailCraft relay there, run \"mailcraft-relay pair\", and enter what it shows."
+msgstr ""
+
 #. what a command says
 #: crates/model/src/mailbox.rs
 msgid "A copy can't go into this Outbox: the next Send/Receive would send it"
@@ -2235,6 +2240,11 @@ msgstr ""
 msgid "Closes this window. Nothing is kept."
 msgstr ""
 
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Code"
+msgstr ""
+
 #. command label
 #: crates/engine/src/cmd/mail.rs
 msgid "Collapse Conversation"
@@ -2278,6 +2288,11 @@ msgstr ""
 #. interface
 #: crates/ui-egui/src/reading.rs
 msgid "Completed."
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Computer"
 msgstr ""
 
 #. command label, interface
@@ -3756,7 +3771,7 @@ msgid "For an account that signs in with Microsoft: the folders you keep under F
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/ews_setup.rs
+#: crates/ui-egui/src/ews_setup.rs crates/ui-egui/src/push_options.rs
 msgid "Forget"
 msgstr ""
 
@@ -6698,6 +6713,11 @@ msgid "Not now: it is installed when you quit MailCraft."
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Not paired."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/compose.rs
 msgid "Not saved"
 msgstr ""
@@ -7374,6 +7394,21 @@ msgstr ""
 msgid "Pages like this open in the browser, where scripts in them run. Open it only if you know who sent it and expect it."
 msgstr ""
 
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Pair"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Pair again"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Paired with {computer}."
+msgstr ""
+
 #. ribbon
 #: crates/ui-egui/src/ribbon.rs
 msgid "Paragraph"
@@ -7736,6 +7771,11 @@ msgstr ""
 #. interface
 #: crates/ui-egui/src/meeting_dialogs.rs
 msgid "Proposed time"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/backstage.rs
+msgid "Push from your computer"
 msgstr ""
 
 #. interface
@@ -11571,6 +11611,11 @@ msgid "This file has a password. Nothing is imported without it."
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "This iPad has no push address: {why}"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/meeting_dialogs.rs
 msgid "This invitation can't be answered from here, so no other time can be proposed for it."
 msgstr ""
@@ -12500,6 +12545,11 @@ msgstr ""
 #. interface
 #: crates/ui-egui/src/approval.rs
 msgid "Waiting for the approval stopped unexpectedly"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Waiting for this iPad's push address from Apple…"
 msgstr ""
 
 #. interface

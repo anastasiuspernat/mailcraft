@@ -1,0 +1,44 @@
+[package]
+name = "mailcraft-relay"
+description = "The owner's own push relay for MailCraft on iPad: watches the owner's Inboxes (IMAP IDLE) on an always-on computer and tells Apple's push service to notify the iPad. No server of anyone else's."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mailcraft-relay"
+path = "src/main.rs"
+
+# The same relay without a console window, for starting with Windows (`mailcraft-relay install`).
+[[bin]]
+name = "mailcraft-relay-service"
+path = "src/service.rs"
+
+[dependencies]
+mailcraft-model = { workspace = true }
+mailcraft-net = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+# The pairing code: random digits from the system (already in the tree: rustls runs on it).
+ring = { workspace = true }
+# A password typed at the console is not shown (Apache-2.0).
+rpassword = "7"
+
+[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+# Passwords, sign-ins and the push key go to the system's credential store and nowhere else.
+keyring-core = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = "1.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+keyring-core = "1"
+zbus-secret-service-keyring-store = { version = "1", features = ["rt-async-io-crypto-rust"] }

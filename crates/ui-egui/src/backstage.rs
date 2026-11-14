@@ -676,6 +676,10 @@ fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
         section(ui, tl!("Desktop alerts"), t);
         crate::alerts::options(app, ui, t);
     }
+    if app.services.push.is_some() {
+        section(ui, tl!("Push from your computer"), t);
+        crate::push_options::options(app, ui, t);
+    }
     section(ui, tl!("Pictures in mail"), t);
     crate::reading::remote::options(app, ui, t);
     crate::sender_images::options(app, ui, t);
