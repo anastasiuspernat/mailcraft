@@ -127,6 +127,8 @@ mod ios {
     /// How often the settings are compared with what was written (seconds): iPadOS may stop the
     /// app at any time without telling it, so nothing waits for a quit.
     const PREFS_EVERY: f64 = 2.0;
+    /// How near a touch must land to a widget to count for it (points).
+    const TOUCH_REACH: f32 = 14.0;
 
     /// The thread that writes the mailbox file, as on the desktop.
     fn saver(ctx: &egui::Context, path: &Path) -> Option<Box<dyn mailcraft_engine::io::BackgroundSave>> {
@@ -206,6 +208,12 @@ mod ios {
                 let ctx = ui.ctx().clone();
                 mailcraft_apple_bridge::trackpad::on_input(move || ctx.request_repaint());
                 self.trackpad = true;
+            }
+            // A fingertip lands a few points from where it aims, and egui's widgets are sized for
+            // a pointer: a touch counts for the nearest widget within this many points (egui's own
+            // setting for touch screens; theirs is 5).
+            if ui.ctx().global_style().interaction.interact_radius < TOUCH_REACH {
+                ui.ctx().all_styles_mut(|s| s.interaction.interact_radius = TOUCH_REACH);
             }
             // The window keeps out from under the status bar and the home indicator: laid out in
             // the safe area, with the window's own colour behind both.

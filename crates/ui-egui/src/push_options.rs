@@ -28,7 +28,7 @@ pub struct PushState {
 pub trait PushHost {
     fn state(&self) -> PushState;
     /// Pair with the relay at `computer` (an address on the home network) with `code`, in the
-    /// background; [`PushHost::state`] says how it went.
+    /// background; [`PushHost::state`] says how it went, or what is missing to begin.
     fn pair(&self, computer: &str, code: &str);
     /// Forget the pairing here (the relay keeps sending until it is told the device is gone).
     fn forget(&self);
@@ -39,7 +39,7 @@ pub fn options(app: &MailApp, ui: &mut Ui, t: &Tokens) {
     let Some(host) = app.services.push.as_ref() else { return };
     let state = host.state();
     ui.label(egui::RichText::new(tl!(
-        "A computer of yours that is always on tells this iPad when new mail arrives, through Apple, even while MailCraft is closed. Install MailCraft relay there, run \"mailcraft-relay pair\", and enter what it shows."
+        "A computer of yours that is always on tells this iPad when new mail arrives, through Apple, even while MailCraft is closed. Install MailCraft relay there, and enter the address and code that \"mailcraft-relay code\" shows (this iPad and the computer on the same network, this once)."
     ))
     .color(t.text_dim));
     match (&state.paired_with, &state.address) {
@@ -63,9 +63,9 @@ pub fn options(app: &MailApp, ui: &mut Ui, t: &Tokens) {
         ui.add(egui::TextEdit::singleline(&mut computer).hint_text("192.168.1.20").desired_width(160.0));
         ui.label(tl!("Code"));
         ui.add(egui::TextEdit::singleline(&mut code).hint_text("123456").desired_width(80.0));
-        let ready = matches!(state.address, Some(Ok(_))) && !state.pairing && !computer.trim().is_empty() && code.trim().len() == 6;
+        // Always there to press (but while a pairing is under way): what is missing is said then.
         let label = if state.paired_with.is_some() { tl!("Pair again") } else { tl!("Pair") };
-        if ui.add_enabled(ready, egui::Button::new(label)).clicked() {
+        if ui.add_enabled(!state.pairing, egui::Button::new(label)).clicked() {
             host.pair(computer.trim(), code.trim());
         }
         if state.pairing {

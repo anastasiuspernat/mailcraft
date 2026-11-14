@@ -265,7 +265,7 @@ msgstr ""
 
 #. interface
 #: crates/ui-egui/src/push_options.rs
-msgid "A computer of yours that is always on tells this iPad when new mail arrives, through Apple, even while MailCraft is closed. Install MailCraft relay there, run \"mailcraft-relay pair\", and enter what it shows."
+msgid "A computer of yours that is always on tells this iPad when new mail arrives, through Apple, even while MailCraft is closed. Install MailCraft relay there, and enter the address and code that \"mailcraft-relay code\" shows (this iPad and the computer on the same network, this once)."
 msgstr ""
 
 #. what a command says

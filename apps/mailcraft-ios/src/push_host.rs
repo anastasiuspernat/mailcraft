@@ -85,13 +85,30 @@ impl PushHost for Push {
     }
 
     fn pair(&self, computer: &str, code: &str) {
-        let Some(token) = mailcraft_apple_bridge::push::token() else { return };
-        if let Ok(mut going) = self.going.lock() {
-            if going.pairing {
-                return;
-            }
-            (going.pairing, going.problem) = (true, None);
+        let missing = if computer.trim().is_empty() {
+            Some("Type the computer's address, as \"mailcraft-relay code\" shows it.".to_string())
+        } else if code.trim().len() != 6 || !code.trim().bytes().all(|b| b.is_ascii_digit()) {
+            Some("The code is the six digits \"mailcraft-relay code\" shows.".to_string())
+        } else {
+            None
+        };
+        let token = mailcraft_apple_bridge::push::token();
+        let missing = missing.or_else(|| match (&token, mailcraft_apple_bridge::push::failure()) {
+            (Some(_), _) => None,
+            (None, Some(why)) => Some(format!("Apple gave this iPad no push address: {why}")),
+            (None, None) => Some("Apple hasn't given this iPad its push address yet: try again in a moment.".into()),
+        });
+        let Ok(mut going) = self.going.lock() else { return };
+        if going.pairing {
+            return;
         }
+        if let Some(why) = missing {
+            going.problem = Some(why);
+            return;
+        }
+        let Some(token) = token else { return };
+        (going.pairing, going.problem) = (true, None);
+        drop(going);
         // Notifications have to be allowed for the relay's to show.
         crate::notifications::ask_permission();
         let (computer, code, going, ctx, file) = (computer.to_string(), code.to_string(), self.going.clone(), self.ctx.clone(), self.file.clone());
