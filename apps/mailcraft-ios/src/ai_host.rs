@@ -142,4 +142,10 @@ impl AiHost for AppleModel {
     fn bundled_model(&self) -> Option<String> {
         Some(MODEL_ID.into())
     }
+    fn fixed_model(&self) -> Option<String> {
+        Some(MODEL_ID.into())
+    }
+    fn embeds(&self) -> bool {
+        false
+    }
 }

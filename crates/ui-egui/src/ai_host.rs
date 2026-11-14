@@ -30,6 +30,17 @@ pub trait AiHost {
     fn bundled_model(&self) -> Option<String> {
         None
     }
+    /// A model that is part of the system rather than a file (Apple's on-device model on iPad):
+    /// what `modelPath` names it by. Options then shows no file, graphics card or unloading, and
+    /// the switch alone turns it on.
+    fn fixed_model(&self) -> Option<String> {
+        None
+    }
+    /// Whether this host reads mail for search by meaning (an embedding model). Apple's
+    /// on-device model has none.
+    fn embeds(&self) -> bool {
+        true
+    }
 }
 
 /// The settings a host needs.

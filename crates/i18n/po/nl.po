@@ -1216,6 +1216,11 @@ msgid "Apple's on-device model, on this device."
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/ai_options.rs
+msgid "Apple's on-device model, on this device. Nothing is sent anywhere."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/account_setup.rs
 #, fuzzy
 msgid "Application (client) ID"

@@ -30,12 +30,24 @@ pub(crate) fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
             "A language model on this computer sorts the Inbox into Primary, Transactions, Updates and Promotions, and writes short summaries. Your mail never leaves this computer, and summaries are kept only here."
         ),
     );
+    // A model that is part of the system (Apple's on-device model on iPad): no file to choose,
+    // no graphics card, nothing to unload; the switch alone turns it on.
+    let fixed = app.services.ai.as_ref().and_then(|h| h.fixed_model());
     let mut on = prefs.enabled;
-    let switch =
-        ui.add_enabled(!prefs.model_path.is_empty() || prefs.enabled, egui::Checkbox::new(&mut on, tl!("Sort the Inbox and summarise mail")));
+    let switch = ui.add_enabled(
+        fixed.is_some() || !prefs.model_path.is_empty() || prefs.enabled,
+        egui::Checkbox::new(&mut on, tl!("Sort the Inbox and summarise mail")),
+    );
     app.hit.add("optionAiEnabled", 0, switch.rect);
     if switch.changed() {
-        set(app, json!({"enabled": on}));
+        match &fixed {
+            Some(model) => set(app, json!({"modelPath": model, "enabled": on})),
+            None => set(app, json!({"enabled": on})),
+        }
+    }
+    if let Some(model) = &fixed {
+        fixed_state(app, ui, t, model);
+        return;
     }
     crate::backstage::row(ui, tl!("Model file"), |ui| {
         let shown = if prefs.model_path.is_empty() {
@@ -160,6 +172,55 @@ pub(crate) fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
         }
     }
     search(app, ui, t);
+}
+
+/// The rest of the options for a model that is part of the system: whether it is ready, what is
+/// left to sort, the summaries' own settings, and Forget all summaries.
+fn fixed_state(app: &mut MailApp, ui: &mut Ui, t: &Tokens, model: &str) {
+    let prefs = app.session.prefs.ai.clone();
+    let host = app.session.ai.host.clone();
+    let set = |app: &mut MailApp, params: Value| {
+        if let Err(e) = app.run("ai.options", params) {
+            app.status(e);
+        }
+    };
+    let dim = |ui: &mut Ui, text: &str| {
+        ui.label(egui::RichText::new(text).color(t.text_dim));
+    };
+    match app.services.ai.as_ref().map(|h| h.check_model(model)) {
+        Some(Ok(_)) => dim(ui, tl!("Apple's on-device model, on this device. Nothing is sent anywhere.")),
+        Some(Err(e)) => {
+            ui.label(egui::RichText::new(e).color(t.red));
+        }
+        None => {}
+    }
+    let mut list = prefs.list_summaries;
+    if ui.checkbox(&mut list, tl!("Show summaries in the message list, in place of the first words")).changed() {
+        set(app, json!({"listSummaries": list}));
+    }
+    let mut summarize = prefs.summarize_new;
+    if ui.checkbox(&mut summarize, tl!("Summarise new mail as it arrives (otherwise when it is opened)")).changed() {
+        set(app, json!({"summarizeNew": summarize}));
+    }
+    let left = app.session.ai.backlog + host.working;
+    if prefs.enabled && left > 0 {
+        dim(ui, &tln!(left, "{n} message left to sort", "{n} messages left to sort"));
+    }
+    if prefs.enabled && !host.error.is_empty() {
+        ui.label(egui::RichText::new(&host.error).color(t.red));
+    }
+    if ui.button(tl!("Forget all summaries")).clicked() {
+        match app.run("ai.clearInsights", json!({})) {
+            Ok(v) => {
+                let n = v.get("messages").and_then(Value::as_u64).unwrap_or(0) as usize;
+                app.status(tln!(n, "Forgot what was made of {n} message", "Forgot what was made of {n} messages"));
+            }
+            Err(e) => app.status(e),
+        }
+    }
+    if app.services.ai.as_ref().is_some_and(|h| h.embeds()) {
+        search(app, ui, t);
+    }
 }
 
 /// Search by meaning: the embedding model, its switch, how far the index is, and Rebuild.

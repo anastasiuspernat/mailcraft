@@ -8,9 +8,12 @@
 //!   the sign-in comes back to it on its loopback address as on the desktop.
 //! - [`model`]: Apple's on-device model (Foundation Models) for the smart Inbox on iPad, through
 //!   two Swift functions (`swift/MailCraftModel.swift`, built by `build.rs`).
+//! - [`trackpad`]: the iPad's trackpad and mouse (two-finger scrolling, where the pointer is),
+//!   which the window library doesn't pass on.
 //!
 //! Elsewhere (not iPadOS) everything here does nothing and says so.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
 pub mod auth_sheet;
 pub mod model;
+pub mod trackpad;

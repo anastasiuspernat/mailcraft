@@ -2409,6 +2409,7 @@ dependencies = [
  "objc2-authentication-services",
  "objc2-foundation 0.3.2",
  "objc2-ui-kit 0.3.2",
+ "raw-window-handle",
 ]
 
 [[package]]

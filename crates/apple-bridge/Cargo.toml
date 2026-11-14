@@ -19,10 +19,14 @@ undocumented_unsafe_blocks = "deny"
 dbg_macro = "warn"
 todo = "warn"
 
+[dependencies]
+# The window's view, from the window library's handle (already in the tree through winit).
+raw-window-handle = "0.6"
+
 [target.'cfg(target_os = "ios")'.dependencies]
 # The same project's bindings as the rest of the Apple code (MIT, Zlib or Apache-2.0).
 objc2 = { version = "0.6", default-features = false, features = ["std"] }
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSError", "NSString", "NSURL", "NSArray", "NSObject", "NSOperation"] }
-objc2-ui-kit = { version = "0.3", default-features = false, features = ["std", "UIApplication", "UIWindow", "UIView", "UIResponder"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSError", "NSString", "NSURL", "NSArray", "NSObject", "NSOperation", "NSValue"] }
+objc2-ui-kit = { version = "0.3", default-features = false, features = ["std", "UIApplication", "UIWindow", "UIView", "UIResponder", "UIGestureRecognizer", "UIGestureRecognizerSubclass", "UIPanGestureRecognizer", "UIHoverGestureRecognizer", "objc2-core-foundation"] }
 objc2-authentication-services = { version = "0.3", default-features = false, features = ["std", "block2", "ASWebAuthenticationSession", "ASFoundation"] }
 block2 = { version = "0.6", default-features = false, features = ["std"] }

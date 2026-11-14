@@ -110,6 +110,8 @@ mod ios {
         prefs_path: Option<PathBuf>,
         last_prefs: Vec<u8>,
         looked: f64,
+        /// The trackpad's recognizers are on the window's view.
+        trackpad: bool,
     }
 
     /// How often the settings are compared with what was written (seconds): iPadOS may stop the
@@ -152,7 +154,43 @@ mod ios {
             // (An idle window draws nothing, so it looks again by itself.)
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(PREFS_EVERY));
         }
-        fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        /// The trackpad's and mouse's pointer and scrolling (`mailcraft_apple_bridge::trackpad`),
+        /// as egui's own events, in its points (the interface size scales them).
+        fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+            use mailcraft_apple_bridge::trackpad::Pointer;
+            let zoom = f64::from(ctx.zoom_factor()).max(0.1);
+            let at = |x: f64, y: f64| egui::pos2((x / zoom) as f32, (y / zoom) as f32);
+            let modifiers = ctx.input(|i| i.modifiers);
+            for p in mailcraft_apple_bridge::trackpad::take() {
+                let wheel = |delta: egui::Vec2, phase| egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta,
+                    phase,
+                    source: egui::MouseWheelSource::Trackpad,
+                    modifiers,
+                };
+                match p {
+                    Pointer::Moved { x, y } => raw.events.push(egui::Event::PointerMoved(at(x, y))),
+                    Pointer::Gone => raw.events.push(egui::Event::PointerGone),
+                    Pointer::ScrollStart { x, y } => {
+                        raw.events.push(egui::Event::PointerMoved(at(x, y)));
+                        raw.events.push(wheel(egui::Vec2::ZERO, egui::TouchPhase::Start));
+                    }
+                    Pointer::Scroll { x, y, dx, dy } => {
+                        raw.events.push(egui::Event::PointerMoved(at(x, y)));
+                        raw.events.push(wheel(egui::vec2((dx / zoom) as f32, (dy / zoom) as f32), egui::TouchPhase::Move));
+                    }
+                    Pointer::ScrollEnd => raw.events.push(wheel(egui::Vec2::ZERO, egui::TouchPhase::End)),
+                }
+            }
+        }
+
+        fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+            // The trackpad's scrolling and pointer, which the window library doesn't pass on.
+            if !self.trackpad {
+                mailcraft_apple_bridge::trackpad::install(frame);
+                self.trackpad = true;
+            }
             // The window keeps out from under the status bar and the home indicator: laid out in
             // the safe area, with the window's own colour behind both.
             let canvas = mailcraft_ui_egui::theme::Tokens::get(ui.ctx()).canvas;
@@ -333,7 +371,7 @@ mod ios {
                 } else {
                     Vec::new()
                 };
-                Ok(Box::new(App { app, prefs_path, last_prefs: last, looked: 0.0 }))
+                Ok(Box::new(App { app, prefs_path, last_prefs: last, looked: 0.0, trackpad: false }))
             }),
         )
         .map_err(|e| e.to_string())

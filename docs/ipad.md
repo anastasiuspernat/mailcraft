@@ -19,9 +19,12 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
   says "🔔 n reminders due". The reminders window never opens by itself.
 - **The smart Inbox** (Primary, Transactions, Updates, Promotions, Priority, summaries) runs on
   Apple's on-device model (Foundation Models), on an iPad with Apple Intelligence (iPadOS 26, an
-  M1 or later, or the A17 Pro iPad mini) with Apple Intelligence turned on. Choose it in File ›
-  Options › AI › "Use the model that came with MailCraft". Nothing leaves the iPad. Search by
-  meaning needs an embedding model, which Apple's hasn't: it is off on iPad.
+  M1 or later, or the A17 Pro iPad mini) with Apple Intelligence turned on. Turn it on in File ›
+  Options › Smart Inbox and summaries › "Sort the Inbox and summarise mail": there is no model
+  file to choose, and the page says whether Apple's model is ready. Nothing leaves the iPad.
+  Search by meaning needs an embedding model, which Apple's hasn't: it is off on iPad.
+- **A trackpad or mouse** (a Magic Keyboard's): two-finger scrolling scrolls what the pointer is
+  over, and the pointer shows what it is over, as on a Mac.
 - **Interface size** starts at 110 % on a new iPad install (File › Options › General).
 
 ## Building
