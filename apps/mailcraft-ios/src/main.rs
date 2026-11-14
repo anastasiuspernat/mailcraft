@@ -84,6 +84,10 @@ fn main() {
 
 #[cfg(target_os = "ios")]
 mod ai_host;
+#[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+mod coast;
+#[cfg(test)]
+mod coast_tests;
 #[cfg(target_os = "ios")]
 mod notifications;
 /// The iPad's keychain, through the same module as the desktop's credential store.
@@ -112,8 +116,10 @@ mod ios {
         looked: f64,
         /// The trackpad's recognizers are on the window's view.
         trackpad: bool,
-        /// A scroll's end held for the next frame (`raw_input_hook`).
-        held: Vec<mailcraft_apple_bridge::trackpad::Pointer>,
+        /// The trackpad's scrolling and coasting (`raw_input_hook`).
+        coast: crate::coast::Trackpad,
+        /// When the window started: the coasting's clock.
+        since: std::time::Instant,
     }
 
     /// How often the settings are compared with what was written (seconds): iPadOS may stop the
@@ -159,6 +165,7 @@ mod ios {
         /// The trackpad's and mouse's pointer and scrolling (`mailcraft_apple_bridge::trackpad`),
         /// as egui's own events, in its points (the interface size scales them).
         fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+            use crate::coast::Input;
             use mailcraft_apple_bridge::trackpad::Pointer;
             let zoom = f64::from(ctx.zoom_factor()).max(0.1);
             let at = |x: f64, y: f64| egui::pos2((x / zoom) as f32, (y / zoom) as f32);
@@ -167,35 +174,25 @@ mod ios {
                 raw.system_theme = Some(if dark { egui::Theme::Dark } else { egui::Theme::Light });
             }
             let modifiers = ctx.input(|i| i.modifiers);
-            let mut seen = std::mem::take(&mut self.held);
-            seen.extend(mailcraft_apple_bridge::trackpad::take());
-            // egui drops what a frame scrolled when the same frame ends the scroll: an end after
-            // a move waits for the next frame.
-            if matches!(seen.last(), Some(Pointer::ScrollEnd)) && seen.iter().any(|p| matches!(p, Pointer::Scroll { .. })) {
-                self.held = seen.pop().into_iter().collect();
+            let v = |x: f64, y: f64| egui::vec2((x / zoom) as f32, (y / zoom) as f32);
+            let seen = mailcraft_apple_bridge::trackpad::take()
+                .into_iter()
+                .map(|p| match p {
+                    Pointer::Moved { x, y } => Input::Moved(at(x, y)),
+                    Pointer::Gone => Input::Gone,
+                    Pointer::ScrollStart { x, y } => Input::Start(at(x, y)),
+                    Pointer::Scroll { x, y, dx, dy } => Input::Scroll(at(x, y), v(dx, dy)),
+                    Pointer::ScrollEnd { vx, vy } => Input::End(v(vx, vy)),
+                })
+                .collect();
+            // A click or a finger on the screen stops coasting.
+            let pressed = raw
+                .events
+                .iter()
+                .any(|e| matches!(e, egui::Event::PointerButton { pressed: true, .. } | egui::Event::Touch { phase: egui::TouchPhase::Start, .. }));
+            let now = self.since.elapsed().as_secs_f64();
+            if self.coast.frame(now, seen, pressed, modifiers, &mut raw.events) {
                 ctx.request_repaint();
-            }
-            for p in seen {
-                let wheel = |delta: egui::Vec2, phase| egui::Event::MouseWheel {
-                    unit: egui::MouseWheelUnit::Point,
-                    delta,
-                    phase,
-                    source: egui::MouseWheelSource::Trackpad,
-                    modifiers,
-                };
-                match p {
-                    Pointer::Moved { x, y } => raw.events.push(egui::Event::PointerMoved(at(x, y))),
-                    Pointer::Gone => raw.events.push(egui::Event::PointerGone),
-                    Pointer::ScrollStart { x, y } => {
-                        raw.events.push(egui::Event::PointerMoved(at(x, y)));
-                        raw.events.push(wheel(egui::Vec2::ZERO, egui::TouchPhase::Start));
-                    }
-                    Pointer::Scroll { x, y, dx, dy } => {
-                        raw.events.push(egui::Event::PointerMoved(at(x, y)));
-                        raw.events.push(wheel(egui::vec2((dx / zoom) as f32, (dy / zoom) as f32), egui::TouchPhase::Move));
-                    }
-                    Pointer::ScrollEnd => raw.events.push(wheel(egui::Vec2::ZERO, egui::TouchPhase::End)),
-                }
             }
         }
 
@@ -388,7 +385,15 @@ mod ios {
                 } else {
                     Vec::new()
                 };
-                Ok(Box::new(App { app, prefs_path, last_prefs: last, looked: 0.0, trackpad: false, held: Vec::new() }))
+                Ok(Box::new(App {
+                    app,
+                    prefs_path,
+                    last_prefs: last,
+                    looked: 0.0,
+                    trackpad: false,
+                    coast: Default::default(),
+                    since: std::time::Instant::now(),
+                }))
             }),
         )
         .map_err(|e| e.to_string())

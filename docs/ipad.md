@@ -24,8 +24,8 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
   file to choose, and the page says whether Apple's model is ready. Nothing leaves the iPad.
   Search by meaning needs an embedding model, which Apple's hasn't: it is off on iPad.
 - **A trackpad or mouse** (a Magic Keyboard's): two-finger scrolling scrolls what the pointer is
-  over, with the iPad's own acceleration and coasting (the scrolling of a system scroll view), and
-  the pointer shows what it is over, as on a Mac.
+  over, coasting on after the fingers lift and slowing as the iPad's own lists do (a click, a
+  touch or scrolling again stops it), and the pointer shows what it is over, as on a Mac.
 - **Light and dark** follow the iPad's appearance (Settings › Display & Brightness, its schedule
   included) while File › Options › General › Theme is "Use system setting", the default.
 - **Interface size** starts at 110 % on a new iPad install (File › Options › General).
