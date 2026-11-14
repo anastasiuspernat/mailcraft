@@ -112,6 +112,8 @@ mod ios {
         looked: f64,
         /// The trackpad's recognizers are on the window's view.
         trackpad: bool,
+        /// A scroll's end held for the next frame (`raw_input_hook`).
+        held: Vec<mailcraft_apple_bridge::trackpad::Pointer>,
     }
 
     /// How often the settings are compared with what was written (seconds): iPadOS may stop the
@@ -160,8 +162,20 @@ mod ios {
             use mailcraft_apple_bridge::trackpad::Pointer;
             let zoom = f64::from(ctx.zoom_factor()).max(0.1);
             let at = |x: f64, y: f64| egui::pos2((x / zoom) as f32, (y / zoom) as f32);
+            // The iPad's light or dark appearance, which "Use system setting" follows.
+            if let Some(dark) = mailcraft_apple_bridge::appearance::dark() {
+                raw.system_theme = Some(if dark { egui::Theme::Dark } else { egui::Theme::Light });
+            }
             let modifiers = ctx.input(|i| i.modifiers);
-            for p in mailcraft_apple_bridge::trackpad::take() {
+            let mut seen = std::mem::take(&mut self.held);
+            seen.extend(mailcraft_apple_bridge::trackpad::take());
+            // egui drops what a frame scrolled when the same frame ends the scroll: an end after
+            // a move waits for the next frame.
+            if matches!(seen.last(), Some(Pointer::ScrollEnd)) && seen.iter().any(|p| matches!(p, Pointer::Scroll { .. })) {
+                self.held = seen.pop().into_iter().collect();
+                ctx.request_repaint();
+            }
+            for p in seen {
                 let wheel = |delta: egui::Vec2, phase| egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
                     delta,
@@ -189,6 +203,9 @@ mod ios {
             // The trackpad's scrolling and pointer, which the window library doesn't pass on.
             if !self.trackpad {
                 mailcraft_apple_bridge::trackpad::install(frame);
+                mailcraft_apple_bridge::appearance::install(frame);
+                let ctx = ui.ctx().clone();
+                mailcraft_apple_bridge::trackpad::on_input(move || ctx.request_repaint());
                 self.trackpad = true;
             }
             // The window keeps out from under the status bar and the home indicator: laid out in
@@ -371,7 +388,7 @@ mod ios {
                 } else {
                     Vec::new()
                 };
-                Ok(Box::new(App { app, prefs_path, last_prefs: last, looked: 0.0, trackpad: false }))
+                Ok(Box::new(App { app, prefs_path, last_prefs: last, looked: 0.0, trackpad: false, held: Vec::new() }))
             }),
         )
         .map_err(|e| e.to_string())
