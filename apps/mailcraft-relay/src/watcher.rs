@@ -20,16 +20,8 @@ use crate::store;
 /// The first wait after a failure, and the longest.
 const FIRST_RETRY: Duration = Duration::from_secs(30);
 const LONGEST_RETRY: Duration = Duration::from_secs(15 * 60);
-/// How long a connection of an account that signs in with Microsoft is kept.
+/// How long a connection of an account that signs in on its provider's page is kept.
 const TOKEN_CONNECTION: Duration = Duration::from_secs(45 * 60);
-
-/// The application id this build signs in to Microsoft with (an identifier, not a secret).
-pub fn microsoft_client_id() -> String {
-    std::env::var("MAILCRAFT_MS_CLIENT_ID")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| option_env!("MAILCRAFT_MS_CLIENT_ID").unwrap_or_default().to_string())
-}
 
 /// "1 new message", "3 new messages".
 pub fn new_mail_text(count: usize) -> String {
@@ -118,11 +110,10 @@ fn secret(account: &Watched, oauth_account: &mailcraft_model::Account) -> Result
 
 /// Watch one account for ever.
 fn watch(shared: &Shared, account: Watched) {
-    let client_id = microsoft_client_id();
     let key = account.email.to_ascii_lowercase();
     let mut retry = FIRST_RETRY;
     loop {
-        let net_account = account.account(&client_id);
+        let net_account = account.account();
         let opened = secret(&account, &net_account).and_then(|s| mailcraft_net::watch::open(&net_account, &s).map_err(|e| e.to_string()));
         let mut inbox = match opened {
             Ok(inbox) => inbox,
@@ -159,7 +150,7 @@ fn watch(shared: &Shared, account: Watched) {
                 }
                 Err(e) => break e.to_string(),
             }
-            if account.microsoft && since.elapsed() > TOKEN_CONNECTION {
+            if account.sign_in.is_some() && since.elapsed() > TOKEN_CONNECTION {
                 break "time for a fresh sign-in token".into();
             }
             if let Err(e) = inbox.wait() {

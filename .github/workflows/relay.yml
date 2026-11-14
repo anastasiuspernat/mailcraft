@@ -3,7 +3,7 @@ name: Relay
 # MailCraft relay (apps/mailcraft-relay) for Windows: the owner's own push relay for MailCraft on
 # iPad, built as two programs (`mailcraft-relay.exe`, which sets it up, and
 # `mailcraft-relay-service.exe`, which runs it without a window) and handed on as one zip. Nothing
-# here is signed or holds a secret.
+# here is signed; the one secret is Google's OAuth client, which the relay signs in with.
 
 on:
   workflow_dispatch:
@@ -38,6 +38,11 @@ jobs:
       - name: Test the relay
         run: cargo test --locked -p mailcraft-relay
       - name: Build the relay
+        env:
+          # Google's sign-in page: the project's own OAuth client (Google calls a desktop client's
+          # secret not confidential; it is kept as a repository secret all the same).
+          MAILCRAFT_GOOGLE_CLIENT_ID: ${{ secrets.MAILCRAFT_GOOGLE_CLIENT_ID }}
+          MAILCRAFT_GOOGLE_CLIENT_SECRET: ${{ secrets.MAILCRAFT_GOOGLE_CLIENT_SECRET }}
         run: cargo build --locked --release -p mailcraft-relay
       - name: Pack it
         shell: pwsh

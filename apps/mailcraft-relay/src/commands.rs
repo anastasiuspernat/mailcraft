@@ -7,14 +7,18 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 
+use mailcraft_model::OAuthProvider;
+
 use crate::config::{self, AppleKey, Config, Watched};
 use crate::{logfile, pair, store, watcher};
 
 pub const HELP: &str = "\
 MailCraft relay: tells MailCraft on your iPad when new mail arrives.
 
-  mailcraft-relay add you@example.com     watch an account (asks for its password, or opens
-                                          Microsoft's sign-in page for Outlook and Microsoft 365)
+  mailcraft-relay add you@example.com     watch an account: opens Google's or Microsoft's sign-in
+                                          page for Gmail, Outlook and Microsoft 365, and asks for
+                                          the password of any other account
+        [--google] (a Google Workspace address at a domain of its own)
         [--server imap.example.com[:993]] [--user name] [--starttls]
   mailcraft-relay remove you@example.com  stop watching it and forget its password
   mailcraft-relay apple-key AuthKey_XXXXXXXXXX.p8 --key-id XXXXXXXXXX --team-id XXXXXXXXXX
@@ -26,9 +30,8 @@ MailCraft relay: tells MailCraft on your iPad when new mail arrives.
   mailcraft-relay uninstall               stop starting with Windows
   mailcraft-relay status                  what is set up, and the end of the log
 
-For Gmail, iCloud, Yahoo and Fastmail use an app password made in that account's security
-settings, not your everyday password. Passwords and sign-ins are kept in this computer's
-credential store only.";
+Run `add` and `apple-key` at the computer itself (or over Remote Desktop), not over SSH.
+Passwords and sign-ins are kept in this computer's credential store only.";
 
 /// The name of the scheduled task that starts the relay with Windows.
 const TASK: &str = "MailCraft Relay";
@@ -93,17 +96,20 @@ fn add(folder: &Path, args: &[String]) -> Result<(), String> {
         return Err(format!("the relay watches {} accounts at most", config::MAX_ACCOUNTS));
     }
     let starttls = args.iter().any(|a| a == "--starttls");
-    let (server, microsoft) = match option(args, "--server") {
-        Some(typed) => (config::typed_server(typed, starttls).ok_or("that server isn't a host name, or host:port")?, false),
+    let (server, sign_in) = match option(args, "--server") {
+        Some(typed) => (config::typed_server(typed, starttls).ok_or("that server isn't a host name, or host:port")?, None),
+        // A Google Workspace address at a domain of its own signs in on Google's page too.
+        None if args.iter().any(|a| a == "--google") => (mailcraft_model::provider::google(false).incoming, Some(OAuthProvider::Google)),
         None => config::server_for(&email).ok_or("that isn't an e-mail address")?,
     };
-    let watched = Watched { email: email.clone(), username: option(args, "--user").unwrap_or_default().to_string(), server, microsoft };
-    let account = watched.account(&watcher::microsoft_client_id());
+    let watched = Watched { email: email.clone(), username: option(args, "--user").unwrap_or_default().to_string(), server, sign_in };
+    let account = watched.account();
     let secret = if let Some(oauth) = &account.oauth {
+        let whose = if oauth.provider == OAuthProvider::Google { "Google" } else { "Microsoft" };
         if oauth.client_id.is_empty() {
-            return Err("this build has no Microsoft application id to sign in with".into());
+            return Err(format!("this build has no {whose} application id to sign in with"));
         }
-        println!("Opening Microsoft's sign-in page in your browser. Sign in as {email} there.");
+        println!("Opening {whose}'s sign-in page in your browser. Sign in as {email} there.");
         let tokens = mailcraft_net::oauth::sign_in(
             oauth,
             &email,
@@ -116,7 +122,7 @@ fn add(folder: &Path, args: &[String]) -> Result<(), String> {
         )
         .map_err(|e| format!("the sign-in didn't finish: {e}"))?;
         if tokens.refresh.is_empty() {
-            return Err("Microsoft gave no lasting sign-in".into());
+            return Err(format!("{whose} gave no lasting sign-in"));
         }
         print!("Checking the Inbox… ");
         let _ = std::io::stdout().flush();
@@ -124,7 +130,7 @@ fn add(folder: &Path, args: &[String]) -> Result<(), String> {
         tokens.refresh
     } else {
         if mailcraft_model::is_gmail_host(&watched.server.host) {
-            println!("Gmail: use an app password (Google Account › Security › App passwords).");
+            return Err("this build can't sign in on Google's page (it was built without a Google application id)".into());
         }
         println!("Server: {}:{}", watched.server.host, watched.server.port);
         let password = rpassword::prompt_password(format!("Password for {email} (not shown): ")).map_err(|e| e.to_string())?;
@@ -242,7 +248,9 @@ fn install() -> Result<(), String> {
         return Err(format!("{} is missing: keep it beside mailcraft-relay.exe", service.display()));
     }
     let made = Command::new("schtasks")
-        .args(["/Create", "/TN", TASK, "/SC", "ONLOGON", "/RL", "LIMITED", "/F", "/TR"])
+        // `/IT`: it runs in the owner's own session once they have signed in, the one where the
+        // credential store holds their passwords (and no password is asked for the task itself).
+        .args(["/Create", "/TN", TASK, "/SC", "ONLOGON", "/RL", "LIMITED", "/IT", "/F", "/TR"])
         .arg(format!("\"{}\"", service.display()))
         .status()
         .map_err(|e| e.to_string())?;

@@ -26,26 +26,28 @@ pub struct Watched {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub username: String,
     pub server: Server,
-    /// Signs in on Microsoft's page (an Outlook.com or Microsoft 365 account) rather than with a password.
-    #[serde(default)]
-    pub microsoft: bool,
+    /// Signs in on the provider's own page (Microsoft for Outlook.com and Microsoft 365, Google
+    /// for Gmail and Google Workspace) rather than with a password.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign_in: Option<OAuthProvider>,
 }
 
 impl Watched {
-    /// The account as the network crate takes it.
-    pub fn account(&self, client_id: &str) -> Account {
+    /// The account as the network crate takes it, signing in with this build's application id
+    /// for its provider.
+    pub fn account(&self) -> Account {
         Account {
             email: self.email.clone(),
             username: self.username.clone(),
             incoming: Some(self.server.clone()),
-            oauth: self.microsoft.then(|| OAuth { provider: OAuthProvider::Microsoft, client_id: client_id.to_string(), ..Default::default() }),
+            oauth: self.sign_in.map(|provider| OAuth { provider, client_id: client_id(provider), ..Default::default() }),
             ..Default::default()
         }
     }
 
     /// The credential store's name for this account's password or sign-in.
     pub fn secret_key(&self) -> String {
-        format!("{}:{}", if self.microsoft { "signin" } else { "password" }, self.email.to_ascii_lowercase())
+        format!("{}:{}", if self.sign_in.is_some() { "signin" } else { "password" }, self.email.to_ascii_lowercase())
     }
 }
 
@@ -157,16 +159,28 @@ impl Config {
     }
 }
 
+/// The application id this build signs in to `provider` with (an identifier, not a secret):
+/// `MAILCRAFT_MS_CLIENT_ID` or `MAILCRAFT_GOOGLE_CLIENT_ID` when the relay starts, else the one it
+/// was built with; empty when there is none.
+pub fn client_id(provider: OAuthProvider) -> String {
+    let (name, built) = match provider {
+        OAuthProvider::Microsoft => ("MAILCRAFT_MS_CLIENT_ID", option_env!("MAILCRAFT_MS_CLIENT_ID")),
+        OAuthProvider::Google => ("MAILCRAFT_GOOGLE_CLIENT_ID", option_env!("MAILCRAFT_GOOGLE_CLIENT_ID")),
+    };
+    std::env::var(name).ok().filter(|s| !s.trim().is_empty()).unwrap_or_else(|| built.unwrap_or_default().to_string())
+}
+
 /// The incoming server for `email`: the provider's when it is known, else `imap.<domain>`, and
-/// whether it signs in on Microsoft's page.
-pub fn server_for(email: &str) -> Option<(Server, bool)> {
+/// the provider whose page it signs in on, if any (Google only when this build can sign in there).
+pub fn server_for(email: &str) -> Option<(Server, Option<OAuthProvider>)> {
     let (_, domain) = email.rsplit_once('@')?;
     if domain.is_empty() || !email.contains('.') {
         return None;
     }
     let preset = mailcraft_model::provider::by_domain(domain).unwrap_or_else(|| mailcraft_model::provider::guess(domain));
-    let microsoft = preset.oauth == Some(OAuthProvider::Microsoft);
-    Some((preset.incoming, microsoft))
+    let google = mailcraft_model::is_gmail_host(&preset.incoming.host) && !client_id(OAuthProvider::Google).is_empty();
+    let sign_in = if google { Some(OAuthProvider::Google) } else { preset.oauth.filter(|p| *p == OAuthProvider::Microsoft) };
+    Some((preset.incoming, sign_in))
 }
 
 /// A server the owner typed: `host` or `host:port`, over TLS unless `starttls`.

@@ -14,10 +14,10 @@ fn temp(name: &str) -> std::path::PathBuf {
 
 #[test]
 fn servers_from_the_address_or_typed() {
-    let (gmail, ms) = server_for("ada@gmail.com").unwrap();
-    assert_eq!((gmail.host.as_str(), gmail.port, ms), ("imap.gmail.com", 993, false));
-    let (outlook, ms) = server_for("ada@outlook.com").unwrap();
-    assert!(ms, "signs in on Microsoft's page");
+    let (gmail, _) = server_for("ada@gmail.com").unwrap();
+    assert_eq!((gmail.host.as_str(), gmail.port), ("imap.gmail.com", 993));
+    let (outlook, sign_in) = server_for("ada@outlook.com").unwrap();
+    assert_eq!(sign_in, Some(OAuthProvider::Microsoft), "signs in on Microsoft's page");
     assert_eq!(outlook.security, Security::Tls);
     assert_eq!(server_for("ada@lumen.example").unwrap().0.host, "imap.lumen.example");
     assert!(server_for("no-at-sign").is_none());
@@ -29,13 +29,12 @@ fn servers_from_the_address_or_typed() {
 }
 
 #[test]
-fn a_microsoft_account_signs_in_with_the_builds_id() {
-    let w = Watched { email: "ada@outlook.com".into(), microsoft: true, ..Default::default() };
-    let a = w.account("client-1");
-    assert_eq!(a.oauth.as_ref().map(|o| (o.provider, o.client_id.as_str())), Some((OAuthProvider::Microsoft, "client-1")));
-    assert_eq!(w.secret_key(), "signin:ada@outlook.com");
+fn an_account_that_signs_in_on_its_providers_page() {
+    let w = Watched { email: "ada@gmail.com".into(), sign_in: Some(OAuthProvider::Google), ..Default::default() };
+    assert_eq!(w.account().oauth.as_ref().map(|o| o.provider), Some(OAuthProvider::Google));
+    assert_eq!(w.secret_key(), "signin:ada@gmail.com");
     let p = Watched { email: "Ada@Example.org".into(), ..Default::default() };
-    assert!(p.account("client-1").oauth.is_none());
+    assert!(p.account().oauth.is_none());
     assert_eq!(p.secret_key(), "password:ada@example.org");
 }
 

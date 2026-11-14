@@ -9,12 +9,12 @@ account the iPad app is built with.
 
 ## What goes where
 
-- **Your passwords and sign-ins** stay on the computer, in its credential store (Windows
+- **Your sign-ins and passwords** stay on the computer, in its credential store (Windows
   Credential Manager, the macOS keychain, the Secret Service on Linux), and go only to your mail
-  servers. Use an app password where the provider offers one (Gmail, iCloud, Yahoo, Fastmail):
-  you can revoke it at any time without touching your main password. An Outlook.com or
-  Microsoft 365 account signs in on Microsoft's page and the relay keeps the sign-in, never a
-  password.
+  servers. Gmail and Google Workspace sign in on Google's page, Outlook.com and Microsoft 365 on
+  Microsoft's: the relay keeps the sign-in (a refresh token you can revoke in your Google or
+  Microsoft account at any time), never a password. Any other account asks for its password
+  (an app password where the provider offers one).
 - **The relay reads nothing of your mail** but which messages are new and unread in the Inbox. It
   opens the Inbox read-only: nothing is marked read, moved or changed.
 - **A notification says only** which account has new mail and how many messages ("3 new
@@ -25,6 +25,11 @@ account the iPad app is built with.
   the code the relay shows. After that, notifications reach the iPad anywhere.
 
 ## Setting it up
+
+Google sign-in needs the build to have a Google OAuth client of its own (`MAILCRAFT_GOOGLE_CLIENT_ID`
+and `MAILCRAFT_GOOGLE_CLIENT_SECRET`, repository secrets that the Relay and iPad workflows build
+in): a *Desktop app* client in Google Cloud whose consent screen is *In production* (one left in
+*Testing* has its sign-ins expire after seven days), with the scope `https://mail.google.com/`.
 
 1. **The push key.** In your Apple developer account, Certificates, IDs & Profiles › Keys › **+**:
    give it a name, tick **Apple Push Notifications service (APNs)**, choose *Production* (or
@@ -40,8 +45,9 @@ account the iPad app is built with.
    mailcraft-relay add you@outlook.com
    ```
 
-   `add` asks for the password (not shown as you type), or opens Microsoft's sign-in page, and
-   checks that the Inbox opens. For a server it doesn't know, add
+   `add` opens Google's or Microsoft's sign-in page in the browser (or, for any other account,
+   asks for the password, not shown as you type), and checks that the Inbox opens. A Google
+   Workspace address at a domain of its own takes `--google`. For a server it doesn't know, add
    `--server imap.example.com[:993]` (and `--user name` when that isn't the address).
 3. **Pair the iPad.** Run `mailcraft-relay pair`. It shows this computer's address and a six-digit
    code. On the iPad: File › Options › **Push from your computer**, enter both and tap **Pair**.
@@ -51,6 +57,9 @@ account the iPad app is built with.
 4. **Start it with Windows.** `mailcraft-relay install` starts it whenever you sign in to Windows,
    without a window, and starts it now. (On a Mac or Linux, have `mailcraft-relay run` started at
    login.) `mailcraft-relay test` sends a test notification.
+
+Run `add` and `apple-key` at the computer itself (or over Remote Desktop), not over SSH: Windows
+doesn't let a session signed in with an SSH key use the credential store.
 
 `mailcraft-relay status` shows the accounts, the paired iPads, whether it is running and the end
 of its log (`relay.log` in `%APPDATA%\MailCraft Relay`). `mailcraft-relay remove you@example.com`
