@@ -77,18 +77,6 @@ sign "$APP/PlugIns/MailCraftNotify.appex" "$IOS_NSE_PROVISIONING_PROFILE" notify
 sign "$APP" "$IOS_PROVISIONING_PROFILE" app
 codesign --verify --strict --deep --verbose=2 "$APP"
 
-# The .ipa: the app in a Payload folder, zipped.
-mkdir -p "$WORK/Payload"
-cp -R "$APP" "$WORK/Payload/"
-(cd "$WORK" && ditto -c -k --sequesterRsrc --keepParent Payload MailCraft.ipa)
-
-# Up to App Store Connect, for TestFlight, with the API key (kept where altool looks for it).
-mkdir -p "$HOME/.appstoreconnect/private_keys"
-printf '%s' "$ASC_KEY_P8" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-xcrun altool --upload-app --type ios --file "$WORK/MailCraft.ipa" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
-echo "uploaded MailCraft $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")) to TestFlight"
-
 # The Ad Hoc build: the same app, signed with the Ad Hoc profiles, encrypted (its profile names
 # the owner's devices) for the workflow to keep as an artifact.
 if [[ -n "${IOS_ADHOC_PROFILE:-}" && -n "${IOS_NSE_ADHOC_PROFILE:-}" && -n "${ADHOC_PASSPHRASE:-}" && -n "${ADHOC_OUT:-}" ]]; then
@@ -104,3 +92,15 @@ if [[ -n "${IOS_ADHOC_PROFILE:-}" && -n "${IOS_NSE_ADHOC_PROFILE:-}" && -n "${AD
 else
   echo "no Ad Hoc build: its profiles or passphrase aren't set"
 fi
+
+# The .ipa: the app in a Payload folder, zipped.
+rm -rf "$WORK/Payload" && mkdir -p "$WORK/Payload"
+cp -R "$APP" "$WORK/Payload/"
+(cd "$WORK" && ditto -c -k --sequesterRsrc --keepParent Payload MailCraft.ipa)
+
+# Up to App Store Connect, for TestFlight, with the API key (kept where altool looks for it).
+mkdir -p "$HOME/.appstoreconnect/private_keys"
+printf '%s' "$ASC_KEY_P8" | base64 --decode > "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+xcrun altool --upload-app --type ios --file "$WORK/MailCraft.ipa" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+rm -f "$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+echo "uploaded MailCraft $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist")) to TestFlight"

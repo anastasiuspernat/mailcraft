@@ -106,8 +106,10 @@ jobs:
           ADHOC_PASSPHRASE: ${{ secrets.ADHOC_PASSPHRASE }}
           ADHOC_OUT: ${{ runner.temp }}/adhoc
         run: bash packaging/ios/sign-and-upload.sh prebuilt/MailCraft.app
-      # The Ad Hoc build, encrypted: installed from the owner's Mac (docs/ipad.md).
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      # The Ad Hoc build, encrypted: installed from the owner's Mac (docs/ipad.md); kept even when
+      # the TestFlight upload after it failed.
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mailcraft-ipad-adhoc
           path: ${{ runner.temp }}/adhoc/
