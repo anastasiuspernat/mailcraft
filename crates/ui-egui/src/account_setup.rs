@@ -260,6 +260,14 @@ fn line(text: &str, max: usize) -> String {
     text.chars().map(|c| if c.is_control() { ' ' } else { c }).take(max).collect::<String>().trim().to_string()
 }
 
+/// An address at a domain kept for examples (RFC 2606, RFC 6761), as the sample mailbox's
+/// people have: nobody's own.
+fn made_up(email: &str) -> bool {
+    let domain = email.rsplit_once('@').map_or("", |(_, d)| d).trim().trim_end_matches('.').to_ascii_lowercase();
+    ["example", "test", "invalid", "localhost"].iter().any(|tld| domain == *tld || domain.ends_with(&format!(".{tld}")))
+        || ["example.com", "example.org", "example.net"].iter().any(|d| domain == *d || domain.ends_with(&format!(".{d}")))
+}
+
 /// The address a field holds, with its domain; `None` when the text isn't an address.
 pub fn address(text: &str) -> Option<(&str, &str)> {
     let text = text.trim();
@@ -421,6 +429,9 @@ pub struct AccountSetup {
     email: String,
     /// The owner's name, as recipients see it.
     name: String,
+    /// The name filled in from another account of the owner's, not typed: the provider's own
+    /// word for it is taken instead while the field still says this.
+    guessed_name: String,
     /// Advanced options are shown.
     advanced: bool,
     /// Skip detection and ask for the kind of account.
@@ -560,6 +571,7 @@ impl AccountSetup {
             page,
             email: String::new(),
             name: String::new(),
+            guessed_name: String::new(),
             advanced: false,
             manual: false,
             picked: false,
@@ -639,7 +651,15 @@ impl AccountSetup {
         w.name = text("displayName");
         if w.name.is_empty() {
             // Whoever writes from here already most likely adds another address of their own.
-            w.name = app.session.mailbox.default_account().filter(|a| !a.email.is_empty()).map(|a| line(&a.display_name, LINE)).unwrap_or_default();
+            // (Not the sample mailbox's invented people, at made-up addresses.)
+            w.name = app
+                .session
+                .mailbox
+                .default_account()
+                .filter(|a| !a.email.is_empty() && !made_up(&a.email))
+                .map(|a| line(&a.display_name, LINE))
+                .unwrap_or_default();
+            w.guessed_name = w.name.clone();
         }
         w
     }
@@ -714,7 +734,8 @@ impl AccountSetup {
         if self.settings_problem(true).is_some() {
             return None;
         }
-        let name = if self.name.trim().is_empty() { line(fallback, LINE) } else { self.name.trim().to_string() };
+        let typed = !self.name.trim().is_empty() && (self.name.trim() != self.guessed_name.trim() || line(fallback, LINE).is_empty());
+        let name = if typed { self.name.trim().to_string() } else { line(fallback, LINE) };
         let mut m = object(json!({"email": email, "displayName": name, "username": self.login(email)}));
         for (key, server) in [("incoming", &self.incoming), ("outgoing", &self.outgoing)] {
             if let Some(v) = server.value() {
@@ -2425,6 +2446,8 @@ mod tests {
     mod help;
     /// The password's eye (#438).
     mod reveal;
+    /// "Your name" is never the sample mailbox's invented person.
+    mod sample_name;
     /// An address at a domain nobody here knows (#761).
     mod unknown_domain;
 
@@ -2871,12 +2894,10 @@ mod tests {
 
     #[test]
     fn the_address_and_the_name_can_be_given() {
-        // Someone who writes from here already most likely adds another address of their own.
+        // The sample's invented person is nobody's name (own names: `tests/sample_name.rs`).
         let a = app(true);
-        let own = a.session.mailbox.default_account().unwrap().display_name.clone();
-        assert!(!own.is_empty());
         let w = AccountSetup::open(&a, &json!({"email": " noor@example.org "})).unwrap();
-        assert_eq!((w.email.as_str(), w.name.as_str(), w.title().as_str()), ("noor@example.org", own.as_str(), "Add Account"));
+        assert_eq!((w.email.as_str(), w.name.as_str(), w.title().as_str()), ("noor@example.org", "", "Add Account"));
         let w = AccountSetup::open(&a, &json!({"displayName": "Noor Haddad"})).unwrap();
         assert_eq!((w.email.as_str(), w.name.as_str()), ("", "Noor Haddad"));
         // The nameless mailbox of a first run has no name to offer.
@@ -3265,10 +3286,10 @@ mod tests {
         assert_eq!((account.email.as_str(), account.display_name.as_str(), account.kind), ("noor@example.org", "Noor Haddad", AccountKind::Local));
         assert!(account.incoming.is_none() && account.outgoing.is_none() && account.oauth.is_none() && account.username.is_empty());
         assert!(looked.lock().unwrap().is_empty() && tried.lock().unwrap().is_empty() && synced.lock().unwrap().is_empty() && !h.state().syncing());
-        // One more: the wizard starts over, with the owner's name from the account just added.
+        // One more: the wizard starts over (with no name from an account at an example address).
         h.get_by_role_and_label(Role::Link, "Add another account").click();
         h.run_steps(4);
-        assert_eq!(wizard(&h).map(|w| (w.page, w.email.as_str(), w.name.as_str(), w.manual)), Some((Page::Address, "", "Noor Haddad", false)));
+        assert_eq!(wizard(&h).map(|w| (w.page, w.email.as_str(), w.name.as_str(), w.manual)), Some((Page::Address, "", "", false)));
         // The same address again is refused where it is asked for.
         type_text(&mut h, "NOOR@example.org");
         connect_manually(&mut h);

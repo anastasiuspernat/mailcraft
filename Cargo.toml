@@ -139,3 +139,18 @@ debug = 0
 # Wayland file drops plus the clipboard on winit's one data device (rust-windowing/winit#4729),
 # so that files dropped on a window are attached (#523).
 winit = { git = "https://github.com/UCS-Care-Group/winit", rev = "951b6c131897a80d27a925af7c5da22ea522eb0d" }
+# egui 0.37.0 and the fixes after it, up to emilk/egui#8840: on iOS the drawing surface is the
+# whole screen, as egui lays it out, rather than the safe area stretched over it (which drew the
+# window lower than its layout, so clicks and touches landed above what they hit). Dropped with
+# the next egui release.
+ecolor = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+eframe = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+egui = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+egui-wgpu = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+egui-winit = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+egui_extras = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+egui_glow = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+egui_kittest = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+emath = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+epaint = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }
+epaint_default_fonts = { git = "https://github.com/emilk/egui", rev = "cd5caec79c9e6683dd793e25b4e7b287ccdd7061" }

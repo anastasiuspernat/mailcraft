@@ -879,9 +879,9 @@ pub(crate) fn show_doc(app: &mut MailApp, ui: &mut Ui, which: Which, min_height:
                 // in the signature or the message (#547), as the menu's Paste brings it
                 // (`crate::clipboard_picture_png`).
                 Event::PasteImage(picture) => {
-                    let [width, height] = picture.size;
+                    let [width, height] = picture.resolution();
                     let fits = width <= crate::MAX_PICTURE_SIDE && height <= crate::MAX_PICTURE_SIDE;
-                    let rgba: Vec<u8> = if fits { picture.pixels.iter().flat_map(|c| c.to_srgba_unmultiplied()).collect() } else { Vec::new() };
+                    let rgba: Vec<u8> = if fits { picture.pixels().iter().flat_map(|c| c.to_srgba_unmultiplied()).collect() } else { Vec::new() };
                     crate::clipboard_picture_png(width, height, &rgba).and_then(|png| {
                         let command = if which == Which::Signature { "signature.picture.add" } else { "insert.picture" };
                         ask(command, json!({"data": crate::files::base64_lite::encode(&png), "file": "picture.png"}))

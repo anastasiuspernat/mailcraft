@@ -1,0 +1,5 @@
+- iPad: clicks and touches land on what they point at. The window was drawn slightly taller than it was laid out, so a click hit a little below the pointer, more so lower on the screen (egui's fix, emilk/egui#8840).
+- iPad: a message's pictures on the web download when you ask for them, through the same checked downloader as on the desktop.
+- iPad: new-mail and reminder notifications show while MailCraft is open, too.
+- iPad: pairing with the relay works the first time: it waits while iPadOS asks whether MailCraft may use the local network.
+- A new account's "Your name" is no longer filled in with the sample mailbox's invented person, and the name Google or Microsoft gives on sign-in is used unless you typed one.

@@ -77,4 +77,5 @@ wildcards = "allow"
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = ["https://github.com/UCS-Care-Group/winit"]
+# egui until its next release carries emilk/egui#8840 (Cargo.toml, [patch.crates-io]).
+allow-git = ["https://github.com/UCS-Care-Group/winit", "https://github.com/emilk/egui"]

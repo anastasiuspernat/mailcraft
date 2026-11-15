@@ -402,8 +402,8 @@ fn dispatch(app: &mut MailApp, ctx: &egui::Context, req: &ControlRequest) -> Out
 
 /// The window as PNG, base64 in the answer (`data`).
 pub fn inline_screenshot(image: &egui::ColorImage) -> Value {
-    let [w, h] = image.size;
-    let bytes: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_array()).collect();
+    let [w, h] = image.resolution();
+    let bytes: Vec<u8> = image.pixels().iter().flat_map(|c| c.to_array()).collect();
     let Some(buffer) = image::RgbaImage::from_raw(w as u32, h as u32, bytes) else {
         return json!({"ok": false, "error": "the screenshot had no pixels"});
     };
@@ -415,8 +415,8 @@ pub fn inline_screenshot(image: &egui::ColorImage) -> Value {
 }
 
 pub fn save_screenshot(image: &egui::ColorImage, path: Option<&str>) -> Value {
-    let [w, h] = image.size;
-    let bytes: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_array()).collect();
+    let [w, h] = image.resolution();
+    let bytes: Vec<u8> = image.pixels().iter().flat_map(|c| c.to_array()).collect();
     let Some(buffer) = image::RgbaImage::from_raw(w as u32, h as u32, bytes) else {
         return json!({"ok": false, "error": "the screenshot had no pixels"});
     };

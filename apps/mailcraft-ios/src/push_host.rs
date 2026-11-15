@@ -18,6 +18,8 @@ use mailcraft_ui_egui::push_options::{PushHost, PushState};
 const PAIR_PORT: u16 = 7993;
 /// How long connecting, and then each read or write, may take.
 const PATIENCE: Duration = Duration::from_secs(8);
+/// How long a refused first connection is tried again while iPadOS asks about the local network.
+const PERMISSION_WAIT: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
 struct Going {
@@ -54,8 +56,16 @@ fn pair_with(computer: &str, code: &str, token: &str) -> Result<String, String> 
         .map_err(|_| "that computer's name couldn't be found: type its address, as the relay shows it".to_string())?
         .next()
         .ok_or("that computer's name couldn't be found")?;
-    let stream = TcpStream::connect_timeout(&address, PATIENCE)
-        .map_err(|_| "the relay didn't answer: is \"mailcraft-relay pair\" running, and is this iPad on the same network?".to_string())?;
+    // The first connection to the home network is refused while iPadOS asks the owner whether
+    // MailCraft may use it: tried again until they have had time to answer.
+    let started = std::time::Instant::now();
+    let stream = loop {
+        match TcpStream::connect_timeout(&address, PATIENCE) {
+            Ok(stream) => break stream,
+            Err(_) if started.elapsed() < PERMISSION_WAIT => std::thread::sleep(Duration::from_secs(2)),
+            Err(_) => return Err("the relay didn't answer: is it running, is this iPad on the same network, and is Local Network on for MailCraft in Settings › Privacy & Security?".to_string()),
+        }
+    };
     let _ = stream.set_read_timeout(Some(PATIENCE));
     let _ = stream.set_write_timeout(Some(PATIENCE));
     // (iPadOS gives an app the device's own name only with an entitlement Apple hands out.)

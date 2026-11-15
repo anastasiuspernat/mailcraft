@@ -198,7 +198,7 @@ struct Entry {
 
 impl Entry {
     fn bytes(&self) -> usize {
-        self.texture.as_ref().map_or(0, |t| t.size().iter().product::<usize>().saturating_mul(4))
+        self.texture.as_ref().map_or(0, |t| t.resolution().iter().product::<usize>().saturating_mul(4))
     }
 }
 
@@ -410,7 +410,7 @@ impl Pictures {
         let wanted = (points * ctx.pixels_per_point()).ceil().clamp(1.0, MAX_TEXTURE_SIDE as f32) as u32;
         let wanted = wanted.div_ceil(WIDTH_STEP).saturating_mul(WIDTH_STEP).min(MAX_TEXTURE_SIDE);
         let [kw, kh] = kept_size(size, max_side, wanted);
-        if have.as_ref().is_some_and(|t| t.size()[0] >= usize::try_from(kw).unwrap_or(usize::MAX)) {
+        if have.as_ref().is_some_and(|t| t.resolution()[0] >= usize::try_from(kw).unwrap_or(usize::MAX)) {
             return ready(have);
         }
         // What the others take, once what is not on screen is let go.
@@ -588,11 +588,11 @@ mod tests {
         for (name, bytes) in [("png", png(64, 40)), ("jpeg", jpeg(64, 40)), ("gif", gif(64, 40)), ("webp", webp(64, 40))] {
             assert_eq!(probe(&bytes), Some([64, 40]), "{name}");
             let image = decode(&bytes, 2048, 2048).unwrap_or_else(|| panic!("{name} was not decoded"));
-            assert_eq!(image.size, [64, 40], "{name}");
+            assert_eq!(image.resolution(), [64, 40], "{name}");
             // The colours are the picture's own (a point in the drawing's title bar), for the
             // kinds that keep every pixel as it was.
             if matches!(name, "png" | "webp") {
-                assert_eq!(image.pixels.get(3 * 64 + 20).map(|c| c.to_array()), Some([0x1f, 0x5f, 0x8b, 0xff]), "{name}");
+                assert_eq!(image.pixels().get(3 * 64 + 20).map(|c| c.to_array()), Some([0x1f, 0x5f, 0x8b, 0xff]), "{name}");
             }
         }
         // A picture is told by what its bytes are, whatever it was called on the way.
@@ -632,9 +632,9 @@ mod tests {
         assert_eq!(kept_size([1, 16_000], 0, 0), [1, 1]);
         assert_eq!(kept_size([0, 0], 2048, 2048), [1, 1]);
         let image = decode(&png(600, 300), 2048, 200).unwrap();
-        assert_eq!(image.size, [200, 100]);
+        assert_eq!(image.resolution(), [200, 100]);
         let image = decode(&jpeg(300, 900), 256, 4000).unwrap();
-        assert_eq!(image.size, [85, 256]);
+        assert_eq!(image.resolution(), [85, 256]);
     }
 
     #[test]
@@ -736,7 +736,7 @@ mod tests {
             data.extend((0..len).map(|_| junk.next() as u8));
             let _ = probe(&data);
             if let Some(image) = decode(&data, 512, 512) {
-                assert!(image.size[0] <= 512 && image.size[1] <= 512);
+                assert!(image.resolution()[0] <= 512 && image.resolution()[1] <= 512);
             }
         }
     }
@@ -758,7 +758,7 @@ mod tests {
             }
             let _ = probe(&data);
             if let Some(image) = decode(&data, 512, 512) {
-                assert!(image.size[0] <= 512 && image.size[1] <= 512);
+                assert!(image.resolution()[0] <= 512 && image.resolution()[1] <= 512);
             }
         }
     }
