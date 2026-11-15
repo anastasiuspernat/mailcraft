@@ -31,5 +31,5 @@ log = { workspace = true }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Pinned exactly: the version the Phase 0 spike measured on the target machine. Review the diff
 # (and run the GPU self-test) before bumping. No default features: no OpenMP.
-llama-cpp-2 = { version = "=0.1.160", default-features = false, optional = true }
+llama-cpp-2 = { version = "=0.1.161", default-features = false, optional = true }
 llama-cpp-sys-2 = { version = "=0.1.161", default-features = false, optional = true }
