@@ -93,23 +93,9 @@ pub(crate) fn options(app: &mut MailApp, ui: &mut Ui, t: &Tokens) {
         });
     });
     let mut list = prefs.list_summaries;
-    if ui.checkbox(&mut list, tl!("Show summaries in the message list, in place of the first words")).changed() {
+    if ui.checkbox(&mut list, tl!("Summarise mail and show the summaries in the message list (off: only when you press Summarize)")).changed() {
         set(app, json!({"listSummaries": list}));
     }
-    let mut summarize = prefs.summarize_new;
-    if ui.checkbox(&mut summarize, tl!("Summarise new mail as it arrives (otherwise when it is opened)")).changed() {
-        set(app, json!({"summarizeNew": summarize}));
-    }
-    crate::backstage::row(ui, tl!("Summarise messages longer than"), |ui| {
-        let label = |n: u32| tln!(n as usize, "{n} word", "{n} words");
-        egui::ComboBox::from_id_salt("opt_ai_words").selected_text(label(prefs.summary_min_words)).show_ui(ui, |ui| {
-            for n in [60u32, 120, 250, 500] {
-                if ui.selectable_label(n == prefs.summary_min_words, label(n)).clicked() {
-                    set(app, json!({"summaryMinWords": n}));
-                }
-            }
-        });
-    });
     crate::backstage::row(ui, tl!("Sort mail already here from the last"), |ui| {
         let label = |n: u32| tln!(n as usize, "{n} day", "{n} days");
         egui::ComboBox::from_id_salt("opt_ai_days").selected_text(label(prefs.backfill_days)).show_ui(ui, |ui| {
@@ -195,12 +181,8 @@ fn fixed_state(app: &mut MailApp, ui: &mut Ui, t: &Tokens, model: &str) {
         None => {}
     }
     let mut list = prefs.list_summaries;
-    if ui.checkbox(&mut list, tl!("Show summaries in the message list, in place of the first words")).changed() {
+    if ui.checkbox(&mut list, tl!("Summarise mail and show the summaries in the message list (off: only when you press Summarize)")).changed() {
         set(app, json!({"listSummaries": list}));
-    }
-    let mut summarize = prefs.summarize_new;
-    if ui.checkbox(&mut summarize, tl!("Summarise new mail as it arrives (otherwise when it is opened)")).changed() {
-        set(app, json!({"summarizeNew": summarize}));
     }
     let left = app.session.ai.backlog + host.working;
     if prefs.enabled && left > 0 {

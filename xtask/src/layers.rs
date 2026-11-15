@@ -69,6 +69,7 @@ pub const TABLE: &[(&str, Class)] = &[
     ("web", Class::Exempt),
     ("ios", Class::Exempt),
     ("relay", Class::Exempt),
+    ("ios-notify", Class::Exempt),
     ("xtask", Class::Exempt),
 ];
 

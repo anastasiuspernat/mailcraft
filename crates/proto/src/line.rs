@@ -19,6 +19,8 @@ pub(crate) struct Wire<S> {
     /// Bytes read from the stream and not handed out yet (from `start`).
     buf: Vec<u8>,
     start: usize,
+    /// The last read failed because the socket's read timeout passed (IDLE's quiet end).
+    timed_out: bool,
 }
 
 fn closed() -> ProtoError {
@@ -35,7 +37,13 @@ fn io_error(e: &std::io::Error) -> ProtoError {
 
 impl<S> Wire<S> {
     pub(crate) fn new(stream: S) -> Self {
-        Wire { stream, buf: Vec::new(), start: 0 }
+        Wire { stream, buf: Vec::new(), start: 0, timed_out: false }
+    }
+
+    /// Whether a read failed for the socket's read timeout since the last call. (What was read of
+    /// a line before is kept, so the session can go on.)
+    pub(crate) fn take_timed_out(&mut self) -> bool {
+        std::mem::take(&mut self.timed_out)
     }
 
     /// Whether the server sent more than has been read so far.
@@ -62,7 +70,7 @@ impl<S: Read + Write> Wire<S> {
             self.start = 0;
         }
         let mut tmp = vec![0u8; CHUNK];
-        let n = read_some(&mut self.stream, &mut tmp)?;
+        let n = read_some(&mut self.stream, &mut tmp, &mut self.timed_out)?;
         self.buf.extend_from_slice(tmp.get(..n).unwrap_or(&[]));
         Ok(())
     }
@@ -138,7 +146,7 @@ impl<S: Read + Write> Wire<S> {
         let mut tmp = vec![0u8; CHUNK];
         while out.len() < n {
             let want = (n - out.len()).min(tmp.len());
-            let got = read_some(&mut self.stream, tmp.get_mut(..want).unwrap_or(&mut []))?;
+            let got = read_some(&mut self.stream, tmp.get_mut(..want).unwrap_or(&mut []), &mut self.timed_out)?;
             out.extend_from_slice(tmp.get(..got.min(want)).unwrap_or(&[]));
         }
         Ok(out)
@@ -168,7 +176,7 @@ fn too_long() -> ProtoError {
 }
 
 /// One read of at least one byte; the end of the stream is an error.
-fn read_some<S: Read>(stream: &mut S, buf: &mut [u8]) -> Result<usize, ProtoError> {
+fn read_some<S: Read>(stream: &mut S, buf: &mut [u8], timed_out: &mut bool) -> Result<usize, ProtoError> {
     let mut interrupts = 0;
     loop {
         match stream.read(buf) {
@@ -176,7 +184,10 @@ fn read_some<S: Read>(stream: &mut S, buf: &mut [u8]) -> Result<usize, ProtoErro
             // A stream that claims more than the buffer holds is lying.
             Ok(n) => return Ok(n.min(buf.len())),
             Err(e) if e.kind() == ErrorKind::Interrupted && interrupts < MAX_INTERRUPTS => interrupts += 1,
-            Err(e) => return Err(io_error(&e)),
+            Err(e) => {
+                *timed_out = matches!(e.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock);
+                return Err(io_error(&e));
+            }
         }
     }
 }

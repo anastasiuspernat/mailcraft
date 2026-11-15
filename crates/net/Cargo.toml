@@ -31,6 +31,11 @@ ring = { workspace = true }
 # The Favorites of Outlook come inside an XML document (`graph::favorites`): read by a reader
 # that takes no DTD and expands no entity.
 quick-xml = { workspace = true }
+# The iPad's pairing with the owner's push relay (`push_link`): SPAKE2, so that the six-digit
+# code proves both ends without a recording of the exchange letting anybody guess it at leisure
+# (RustCrypto, MIT or Apache-2.0; on curve25519-dalek). And serde for its messages.
+spake2 = "0.4"
+serde = { workspace = true }
 
 [features]
 # A stand-in for Microsoft Graph that holds a client to the documented contract

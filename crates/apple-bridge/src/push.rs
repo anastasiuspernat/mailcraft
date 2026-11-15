@@ -13,7 +13,7 @@ use std::sync::Mutex;
 /// What Apple said: the device token (hexadecimal), or why there is none.
 static TOKEN: Mutex<Option<Result<String, String>>> = Mutex::new(None);
 
-fn keep(said: Result<String, String>) {
+pub(crate) fn keep(said: Result<String, String>) {
     if let Ok(mut t) = TOKEN.lock() {
         *t = Some(said);
     }
@@ -49,14 +49,12 @@ mod imp {
 
 #[cfg(target_os = "ios")]
 mod imp {
-    use std::cell::RefCell;
     use std::sync::Once;
 
-    use objc2::rc::Retained;
-    use objc2::runtime::{AnyClass, AnyObject, Imp, ProtocolObject, Sel};
-    use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
-    use objc2_foundation::{NSData, NSError, NSObject, NSObjectProtocol};
-    use objc2_ui_kit::{UIApplication, UIApplicationDelegate};
+    use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+    use objc2::{MainThreadMarker, sel};
+    use objc2_foundation::{NSData, NSError};
+    use objc2_ui_kit::UIApplication;
 
     /// `application:didRegisterForRemoteNotificationsWithDeviceToken:`.
     extern "C-unwind" fn registered(_this: &AnyObject, _cmd: Sel, _app: &AnyObject, token: Option<&NSData>) {
@@ -85,61 +83,19 @@ mod imp {
         unsafe { objc2::ffi::class_addMethod(class, sel, imp, c"v@:@@".as_ptr()) };
     }
 
-    define_class!(
-        // SAFETY: NSObject has no subclassing requirements, and the class has no ivars to drop.
-        #[unsafe(super(NSObject))]
-        #[thread_kind = MainThreadOnly]
-        #[name = "MailCraftAppDelegate"]
-        struct Receiver;
-
-        // SAFETY: NSObjectProtocol has no extra requirements.
-        unsafe impl NSObjectProtocol for Receiver {}
-
-        // SAFETY: the two methods have UIApplicationDelegate's signatures; every other method of
-        // the protocol is optional and left out.
-        unsafe impl UIApplicationDelegate for Receiver {
-            #[unsafe(method(application:didRegisterForRemoteNotificationsWithDeviceToken:))]
-            fn did_register(&self, _app: &UIApplication, token: &NSData) {
-                super::keep(Ok(super::hex(&token.to_vec())));
-            }
-
-            #[unsafe(method(application:didFailToRegisterForRemoteNotificationsWithError:))]
-            fn did_fail(&self, _app: &UIApplication, error: &NSError) {
-                super::keep(Err(error.localizedDescription().to_string()));
-            }
-        }
-    );
-
-    impl Receiver {
-        fn new(mtm: MainThreadMarker) -> Retained<Self> {
-            let this = Self::alloc(mtm).set_ivars(());
-            // SAFETY: `init` of NSObject, on an object just allocated.
-            unsafe { msg_send![super(this), init] }
-        }
-    }
-
-    thread_local! {
-        /// Our delegate, when the app had none.
-        static OURS: RefCell<Option<Retained<Receiver>>> = const { RefCell::new(None) };
-    }
-
     pub fn register() {
         static ONCE: Once = Once::new();
         let Some(mtm) = MainThreadMarker::new() else { return };
         ONCE.call_once(|| {
             let app = UIApplication::sharedApplication(mtm);
-            // SAFETY: the delegate is the window library's, alive for as long as the app is; it is
-            // used here only to find its class.
-            let Some(delegate) = (unsafe { app.delegate() }) else {
-                // The window library runs the app without a delegate: one of ours, that only
-                // takes the push address, kept for as long as the app runs (UIKit doesn't keep it).
-                let ours = Receiver::new(mtm);
-                // SAFETY: the delegate is kept in OURS below for the rest of the run.
-                unsafe { app.setDelegate(Some(ProtocolObject::from_ref(&*ours))) };
-                OURS.with(|o| *o.borrow_mut() = Some(ours));
+            // Ours, when the window library runs the app without a delegate (it does).
+            if crate::delegate::ensure() {
                 app.registerForRemoteNotifications();
                 return;
-            };
+            }
+            // SAFETY: the delegate is someone else's, alive for as long as the app is; it is used
+            // here only to find its class.
+            let Some(delegate) = (unsafe { app.delegate() }) else { return };
             let object: &AnyObject = delegate.as_ref();
             let class = object.class();
             type Two<T> = extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, Option<&T>);

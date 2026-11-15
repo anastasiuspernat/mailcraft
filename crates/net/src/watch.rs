@@ -3,7 +3,8 @@
 //! Watching an account's Inbox for new mail, for the owner's push relay (`apps/mailcraft-relay`):
 //! one connection that is signed in, has the Inbox open read-only (EXAMINE: nothing is marked
 //! read, moved or changed), and waits for the server's word with IDLE (RFC 2177), or with a NOOP
-//! a minute where the server can't IDLE. Nothing of a message is read but its UID and its flags.
+//! a minute where the server can't IDLE. Nothing of a message is read but its UID, its flags and,
+//! for the newest new one, the sender and the subject in its header ([`Inbox::about`]).
 
 use std::time::Duration;
 
@@ -14,11 +15,11 @@ use crate::NetError;
 use crate::sync::open_imap;
 use crate::transport::Stream;
 
-/// How long one IDLE lasts before it is renewed: well inside the 29 minutes RFC 2177 allows, and
-/// short enough that a connection that died without a word is noticed.
+/// How long one IDLE lasts before it is renewed on the same connection: well inside the 29
+/// minutes RFC 2177 allows, and short enough that a connection that died without a word is
+/// noticed (it doesn't answer the renewal). A read waits as long: a server that says nothing
+/// while it idles (Gmail) ends the wait quietly, not the connection.
 const IDLE_FOR: Duration = Duration::from_secs(9 * 60);
-/// How long a read waits during IDLE: a little more than [`IDLE_FOR`].
-const IDLE_READ: Duration = Duration::from_secs(10 * 60);
 /// How often a server that can't IDLE is asked.
 const POLL_EVERY: Duration = Duration::from_secs(60);
 
@@ -68,7 +69,7 @@ impl Inbox {
             std::thread::sleep(POLL_EVERY);
             return Ok(self.imap.noop()?);
         }
-        self.imap.get_mut().listen_for(IDLE_READ).map_err(|e| NetError::Proto(mailcraft_proto::ProtoError::Io(e.to_string())))?;
+        self.imap.get_mut().listen_for(IDLE_FOR).map_err(|e| NetError::Proto(mailcraft_proto::ProtoError::Io(e.to_string())))?;
         let idled: Result<Idled, _> = self.imap.idle(IDLE_FOR);
         self.imap.get_mut().listen_done().map_err(|e| NetError::Proto(mailcraft_proto::ProtoError::Io(e.to_string())))?;
         idled.map(|_| ()).map_err(NetError::from)
@@ -84,6 +85,17 @@ impl Inbox {
         let next = newer.iter().map(|f| f.uid.saturating_add(1)).max().unwrap_or(from);
         let unread = newer.iter().filter(|f| !f.flags.iter().any(|flag| flag.eq_ignore_ascii_case("\\Seen"))).map(|f| f.uid).collect();
         Ok((unread, next))
+    }
+
+    /// Who message `uid` is from (the name, else the address) and its subject, from its header
+    /// alone, read without marking it read (BODY.PEEK, and the Inbox is open read-only).
+    pub fn about(&mut self, uid: u32) -> Result<(String, String), NetError> {
+        let Some(fetched) = self.imap.uid_fetch_header(uid)? else { return Ok(Default::default()) };
+        let message = mailcraft_mime::parse(fetched.body.as_deref().unwrap_or(&[]));
+        let from = if message.from.name.trim().is_empty() { message.from.email } else { message.from.name };
+        let tidy =
+            |text: &str, most: usize| text.chars().map(|c| if c.is_control() { ' ' } else { c }).take(most).collect::<String>().trim().to_string();
+        Ok((tidy(&from, 80), tidy(&message.subject, 160)))
     }
 
     /// Say goodbye to the server.

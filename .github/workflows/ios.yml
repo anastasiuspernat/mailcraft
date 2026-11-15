@@ -14,6 +14,9 @@ on:
     branches: [main]
     paths:
       - 'apps/mailcraft-ios/**'
+      - 'apps/mailcraft-ios-notify/**'
+      - 'crates/net/**'
+      - 'crates/ui-egui/**'
       - 'crates/apple-bridge/**'
       - 'packaging/ios/**'
       - '.github/workflows/ios.yml'
@@ -94,7 +97,19 @@ jobs:
           IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
           IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          IOS_NSE_PROVISIONING_PROFILE: ${{ secrets.IOS_NSE_PROVISIONING_PROFILE }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          IOS_ADHOC_PROFILE: ${{ secrets.IOS_ADHOC_PROFILE }}
+          IOS_NSE_ADHOC_PROFILE: ${{ secrets.IOS_NSE_ADHOC_PROFILE }}
+          ADHOC_PASSPHRASE: ${{ secrets.ADHOC_PASSPHRASE }}
+          ADHOC_OUT: ${{ runner.temp }}/adhoc
         run: bash packaging/ios/sign-and-upload.sh prebuilt/MailCraft.app
+      # The Ad Hoc build, encrypted: installed from the owner's Mac (docs/ipad.md).
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mailcraft-ipad-adhoc
+          path: ${{ runner.temp }}/adhoc/
+          if-no-files-found: ignore
+          retention-days: 14

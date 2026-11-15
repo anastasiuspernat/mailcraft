@@ -45,8 +45,13 @@ fn settings_round_trip_and_hold_no_secret() {
     assert_eq!(Config::load(&path).unwrap(), Config::default(), "none yet");
     let mut config = Config::default();
     config.accounts.push(Watched { email: "ada@example.org".into(), server: typed_server("imap.example.org", false).unwrap(), ..Default::default() });
-    assert!(config.pair(Device { token: "ab".repeat(32), name: "iPad".into() }));
-    assert!(config.pair(Device { token: "AB".repeat(32), name: "Ada's iPad".into() }), "the same iPad, renamed");
+    assert!(config.pair(Device { token: "ab".repeat(32), name: "iPad".into(), ..Default::default() }));
+    assert!(config.pair(Device { token: "AB".repeat(32), name: "Ada's iPad".into(), ..Default::default() }), "the same iPad, renamed");
+    // A device with an id keeps it when Apple gives it a new push address; the old address goes.
+    assert!(config.pair(Device { id: "0123456789abcdef".into(), token: "AB".repeat(32), name: "Ada's iPad".into(), ..Default::default() }));
+    assert_eq!(config.devices.len(), 1, "the address went to the device with the id");
+    assert!(config.pair(Device { id: "0123456789abcdef".into(), token: "cd".repeat(32), name: "Ada's iPad".into(), ..Default::default() }));
+    assert_eq!((config.devices.len(), config.devices[0].token.as_str()), (1, "cd".repeat(32).as_str()));
     assert_eq!(config.devices.len(), 1);
     config.seen.insert("ada@example.org".into(), Seen { uid_validity: 11, next: 8 });
     config.save(&path).unwrap();
@@ -62,7 +67,7 @@ fn settings_round_trip_and_hold_no_secret() {
 fn bad_devices_and_too_many_are_left_out() {
     let mut config = Config::default();
     for i in 0..15 {
-        let _ = config.pair(Device { token: format!("{i:02}").repeat(32), name: String::new() });
+        let _ = config.pair(Device { token: format!("{i:02}").repeat(32), ..Default::default() });
     }
     assert_eq!(config.devices.len(), crate::config::MAX_DEVICES);
     let dir = temp("bad");

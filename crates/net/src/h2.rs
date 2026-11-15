@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: MailCraft contributors
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The least of HTTP/2 (RFC 9113) that one request needs: Apple's push service speaks nothing
-//! else. A connection carries one POST on stream 1 and is closed after its answer.
+//! else. A connection carries one POST at a time, on streams 1, 3, 5…, and is kept for the next
+//! (Apple asks that connections be kept rather than opened for each notification).
 //!
 //! The request's headers are written with HPACK (RFC 7541) without the dynamic table or Huffman
 //! coding, which a server must accept. Of the answer's headers only the status is read, when it
@@ -35,8 +36,10 @@ const END_HEADERS: u8 = 0x4;
 const PADDED: u8 = 0x8;
 const PRIORITY: u8 = 0x20;
 
-/// The stream the one request goes on.
-const STREAM: u32 = 1;
+/// The first stream of a connection: the request on it begins the connection.
+const FIRST_STREAM: u32 = 1;
+/// The highest stream id (RFC 9113 §5.1.1): a connection that gets there is closed.
+pub(crate) const LAST_STREAM: u32 = (1 << 31) - 1;
 
 /// The server's answer.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -154,18 +157,38 @@ fn unpadded(kind: u8, flags: u8, payload: &[u8]) -> Result<&[u8], String> {
 
 /// POST `body` to `path` at `authority` over `io`, a fresh connection that agreed on HTTP/2
 /// ("h2"), and read the answer.
+#[cfg(test)]
 pub(crate) fn post(io: &mut (impl Read + Write), authority: &str, path: &str, headers: &[(&str, &str)], body: &[u8]) -> Result<Answer, String> {
+    post_on(io, FIRST_STREAM, authority, path, headers, body)
+}
+
+/// POST on stream `stream` (odd; [`FIRST_STREAM`] on a fresh connection, which then begins
+/// with the preface and SETTINGS; each later request on the one after the last), and read its
+/// answer. An error leaves the connection of no further use.
+pub(crate) fn post_on(
+    io: &mut (impl Read + Write),
+    stream_id: u32,
+    authority: &str,
+    path: &str,
+    headers: &[(&str, &str)],
+    body: &[u8],
+) -> Result<Answer, String> {
+    if stream_id.is_multiple_of(2) || stream_id > LAST_STREAM {
+        return Err("no stream left on this connection".into());
+    }
     if body.len() > MAX_FRAME {
         return Err("the request is too large".into());
     }
-    let mut out = PREFACE.to_vec();
-    frame(&mut out, SETTINGS, 0, 0, &[]);
+    let mut out = if stream_id == FIRST_STREAM { PREFACE.to_vec() } else { Vec::new() };
+    if stream_id == FIRST_STREAM {
+        frame(&mut out, SETTINGS, 0, 0, &[]);
+    }
     let block = header_block(authority, path, headers);
     if block.len() > MAX_FRAME {
         return Err("the request's headers are too large".into());
     }
-    frame(&mut out, HEADERS, END_HEADERS, STREAM, &block);
-    frame(&mut out, DATA, END_STREAM, STREAM, body);
+    frame(&mut out, HEADERS, END_HEADERS, stream_id, &block);
+    frame(&mut out, DATA, END_STREAM, stream_id, body);
     io.write_all(&out).and_then(|()| io.flush()).map_err(|e| format!("the request couldn't be sent ({e})"))?;
 
     let mut answer = Answer::default();
@@ -187,8 +210,8 @@ pub(crate) fn post(io: &mut (impl Read + Write), authority: &str, path: &str, he
                 let said = String::from_utf8_lossy(payload.get(8..).unwrap_or(&[])).chars().take(200).collect::<String>();
                 return Err(format!("the server closed the connection{}", if said.is_empty() { String::new() } else { format!(": {said}") }));
             }
-            (RST_STREAM, STREAM) => return Err("the server called the request off".into()),
-            (HEADERS, STREAM) | (CONTINUATION, STREAM) => {
+            (RST_STREAM, s) if s == stream_id => return Err("the server called the request off".into()),
+            (HEADERS | CONTINUATION, s) if s == stream_id => {
                 let block = unpadded(kind, flags, &payload)?;
                 if kind == HEADERS && !headers_seen {
                     answer.status = status(block);
@@ -198,7 +221,7 @@ pub(crate) fn post(io: &mut (impl Read + Write), authority: &str, path: &str, he
                     return Ok(answer);
                 }
             }
-            (DATA, STREAM) => {
+            (DATA, s) if s == stream_id => {
                 let data = unpadded(kind, flags, &payload)?;
                 if answer.body.len().saturating_add(data.len()) <= MAX_BODY {
                     answer.body.extend_from_slice(data);

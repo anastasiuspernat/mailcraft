@@ -5781,6 +5781,11 @@ msgid "Last Week"
 msgstr "La semaine dernière"
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Last heard from the relay: {when}"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/forms.rs crates/ui-egui/src/merge_contacts.rs
 #, fuzzy
 msgid "Last name"
@@ -10810,11 +10815,6 @@ msgid "Show signature as it is sent"
 msgstr ""
 
 #. interface
-#: crates/ui-egui/src/ai_options.rs
-msgid "Show summaries in the message list, in place of the first words"
-msgstr ""
-
-#. interface
 #: crates/ui-egui/src/calendar_view.rs
 msgid "Show the Copy under Shared Calendars"
 msgstr ""
@@ -11526,12 +11526,7 @@ msgstr "Suggérer des destinataires"
 
 #. interface
 #: crates/ui-egui/src/ai_options.rs
-msgid "Summarise messages longer than"
-msgstr ""
-
-#. interface
-#: crates/ui-egui/src/ai_options.rs
-msgid "Summarise new mail as it arrives (otherwise when it is opened)"
+msgid "Summarise mail and show the summaries in the message list (off: only when you press Summarize)"
 msgstr ""
 
 #. command label, interface
@@ -14740,6 +14735,11 @@ msgid "You're working offline. Turn off Work Offline (Send / Receive) to connect
 msgstr ""
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "Your accounts go to the relay when this iPad is next on the same network as the computer."
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/auto_replies.rs
 msgid "Your automatic replies couldn't be read: {error}"
 msgstr ""
@@ -16937,6 +16937,16 @@ msgid "{account} · No access"
 msgstr "{account} · Aucun accès"
 
 #. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "{account}: watched"
+msgstr ""
+
+#. interface
+#: crates/ui-egui/src/push_options.rs
+msgid "{account}: {problem}"
+msgstr ""
+
+#. interface
 #: crates/ui-egui/src/import_pst.rs
 msgid "{added} brought in, of {found} found."
 msgstr ""
@@ -18114,13 +18124,6 @@ msgid "{n} was there already"
 msgid_plural "{n} were there already"
 msgstr[0] "{n} était déjà là"
 msgstr[1] "{n} étaient déjà là"
-
-#. interface
-#: crates/ui-egui/src/ai_options.rs
-msgid "{n} word"
-msgid_plural "{n} words"
-msgstr[0] ""
-msgstr[1] ""
 
 #. interface
 #: crates/ui-egui/src/calendar_sync.rs

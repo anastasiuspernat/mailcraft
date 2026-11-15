@@ -21,12 +21,12 @@ summaries**.
 - **Rules before the model.** Mail from someone you know (a contact, or someone you have written
   to) goes to Primary, and a bulk mailing with an unsubscribe link and a marketing subject goes to
   Promotions, without asking the model.
-- **Summaries.** A message longer than the word count in Options gets one short sentence (at
-  most 20 words) at the top of the reading pane: who wants what, by when, with up to three things
-  it asks for listed and the due date if it gives one. **Summarize conversation** does the same for
-  a whole conversation, in at most two sentences. New
-  mail is summarised as it arrives (or only when opened, if you turn that off); opening a message
-  asks for its summary first.
+- **Summaries.** One short sentence (at most 20 words) at the top of the reading pane: who wants
+  what, by when, with up to three things it asks for listed and the due date if it gives one.
+  **Summarize conversation** does the same for a whole conversation, in at most two sentences.
+  Mail is summarised by itself only while **Show summaries in the message list** is on (File ›
+  Options), any message of 12 words or more, as it arrives and when it is opened; with it off,
+  nothing is summarised until you press **Summarize**.
 - **Priority.** Time-sensitive unread mail in Primary (something due today or tomorrow, a person
   asking you to act soon, a changed meeting, a trip or a delivery today) comes first, in a framed
   box under **Priority**. Mail you have already read is never asked about. It stays there to the end of its due day, or for two days when it has none. With more than four,
@@ -36,8 +36,7 @@ summaries**.
   **Mark as Priority** puts one in. Right-click › **Always Show Sender in Priority** makes the
   sender a VIP: their unread mail in Primary is always in the box, however old, until you read
   it or say Not a Priority.
-- **Summaries in the list.** Unread mail gets a summary however short it is, and the list shows
-  it, after a small AI mark, in place of the message's first words, on two lines at least (File ›
+- **Summaries in the list.** The list shows a message's summary, after a small AI mark, in place of the message's first words, on two lines at least (File ›
   Options: Show summaries in the message list). What the model made is kept with the mailbox, so a
   restart sorts and summarises nothing again.
 - **One row per sender.** In Transactions, Updates and Promotions a sender's mail comes together:
@@ -96,7 +95,7 @@ summaries**.
 
 | Command | What it does |
 |---|---|
-| `ai.options` | The settings: `enabled`, `modelPath`, `gpu` (`auto`/`off`), `summarizeNew`, `summaryMinWords`, `backfillDays`, `idleUnloadMinutes`, `listSummaries`, `searchModelPath`, `search` |
+| `ai.options` | The settings: `enabled`, `modelPath`, `gpu` (`auto`/`off`), `summarizeNew` and `summaryMinWords` (no longer used: mail is summarised unasked only while `listSummaries` is on, any message of 12 words or more, and otherwise only when Summarize is pressed), `backfillDays`, `idleUnloadMinutes`, `listSummaries`, `searchModelPath`, `search` |
 | `ai.status` | Whether a model is loaded, where (`vulkan`, `metal`, `cpu`), the self-test, what is waiting |
 | `ai.summarize` | `{id}` or `{id, conversation: true}`: a summary first |
 | `ai.setCategory` | `{ids, category, sender?}`: your word, kept for the sender with `sender` |

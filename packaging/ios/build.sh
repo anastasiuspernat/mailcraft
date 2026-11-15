@@ -41,8 +41,8 @@ export CARGO_TARGET_DIR="$ROOT/target/ios"
 # same: MinimumOSVersion).
 export IPHONEOS_DEPLOYMENT_TARGET=16.0
 
-echo "==> building mailcraft-ios for $TARGET"
-cargo build --release -p mailcraft-ios --target "$TARGET"
+echo "==> building mailcraft-ios and its notification extension for $TARGET"
+cargo build --release -p mailcraft-ios -p mailcraft-ios-notify --target "$TARGET"
 
 APP="$CARGO_TARGET_DIR/$TARGET/release/MailCraft.app"
 rm -rf "$APP"
@@ -83,6 +83,19 @@ for kv in "DTPlatformName:string:$SDK_NAME" "DTPlatformVersion:string:$SDK_VERSI
   /usr/libexec/PlistBuddy -c "Add :$key $type $value" "$APP/Info.plist" >/dev/null
 done
 plutil -lint "$APP/Info.plist" >/dev/null
+
+# The notification extension (apps/mailcraft-ios-notify), which opens a notification's sealed text,
+# with the same platform keys as the app.
+APPEX="$APP/PlugIns/MailCraftNotify.appex"
+mkdir -p "$APPEX"
+cp "$CARGO_TARGET_DIR/$TARGET/release/mailcraft-ios-notify" "$APPEX/MailCraftNotify"
+sed -e "s/@BUNDLE_ID@/$BUNDLE_ID/" -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" -e "s/@PLATFORM@/$PLATFORM/" \
+  "$ROOT/packaging/ios/Notify-Info.plist.in" > "$APPEX/Info.plist"
+for key in DTPlatformName DTPlatformVersion DTPlatformBuild DTSDKName DTSDKBuild DTXcode DTXcodeBuild DTCompiler BuildMachineOSBuild; do
+  value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$APP/Info.plist")"
+  /usr/libexec/PlistBuddy -c "Add :$key string $value" "$APPEX/Info.plist" >/dev/null
+done
+plutil -lint "$APPEX/Info.plist" >/dev/null
 echo "==> $APP"
 
 if [[ $RUN == 1 ]]; then

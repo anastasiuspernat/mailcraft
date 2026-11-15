@@ -39,7 +39,7 @@ pub fn specs() -> Vec<CommandSpec> {
             r#"{} — answers {"enabled", "available", "backend", "model", "loaded", "error", "selfTest", "lastMillis", "waiting", "working", "backlog", "meaning": {"on", "indexed", "left"}, "options"}"#,
         ),
         CommandSpec::new("ai.options", "AI Options", "File › Options › AI", options).pure().params(
-            r#"{"enabled"?: bool, "modelPath"?: string, "gpu"?: "auto"|"off", "summarizeNew"?: bool, "summaryMinWords"?: 0-10000, "backfillDays"?: 0-3650, "idleUnloadMinutes"?: 1-1440, "listSummaries"?: bool, "searchModelPath"?: string (an embedding model, GGUF, for search by meaning; "" for none), "search"?: bool (search by meaning on)} — kept with this computer's settings. Turning it on lets a model on this computer read the Inbox's mail; nothing is sent anywhere"#,
+            r#"{"enabled"?: bool, "modelPath"?: string, "gpu"?: "auto"|"off", "summarizeNew"?: bool (no longer used), "summaryMinWords"?: 0-10000 (no longer used), "backfillDays"?: 0-3650, "idleUnloadMinutes"?: 1-1440, "listSummaries"?: bool, "searchModelPath"?: string (an embedding model, GGUF, for search by meaning; "" for none), "search"?: bool (search by meaning on)} — kept with this computer's settings. Turning it on lets a model on this computer read the Inbox's mail; nothing is sent anywhere"#,
         ),
         CommandSpec::new("view.smartGroup", "Show More", "View › Layout", smart_group).reads().params(
             r#"{"key": string (a row's `more.key`: "priority", or "from:" and a sender's address), "open"?: bool (default: the other way)} — shows or folds away the rest of the Priority section, or a sender's other mail in Transactions, Updates or Promotions"#,

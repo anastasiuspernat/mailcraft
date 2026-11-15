@@ -37,9 +37,19 @@ impl Script {
     }
 }
 
+/// In a script, where the server goes quiet: that read times out (`WouldBlock`, as a socket's
+/// read timeout does), and the script goes on after it.
+pub(crate) const QUIET: &[u8] = b"<quiet>";
+
 impl Read for Script {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let left = &self.input[self.pos.min(self.input.len())..];
+        if left.starts_with(QUIET) {
+            self.pos += QUIET.len();
+            return Err(Error::new(ErrorKind::WouldBlock, "timed out"));
+        }
+        let quiet_at = left.windows(QUIET.len()).position(|w| w == QUIET).unwrap_or(left.len());
+        let left = &left[..quiet_at];
         let mut n = left.len().min(buf.len());
         if self.trickle {
             n = n.min([3, 1, 7, 2, 5, 4, 6][self.step % 7]);

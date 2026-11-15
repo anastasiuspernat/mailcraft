@@ -32,6 +32,10 @@ mailcraft-ai = { workspace = true }
 # keyring-core's API over the data-protection keychain (MIT OR Apache-2.0, as on the Mac).
 keyring-core = "1"
 apple-native-keyring-store = { version = "1", features = ["protected"] }
+# The push keys (`push_keys.rs`), in a keychain item the notification extension reads too, even
+# while the iPad is locked (after its first unlock): the same library the keyring store runs on.
+security-framework = { version = "3", default-features = false }
+serde = { workspace = true }
 # wgpu on Metal; no accesskit (no iOS adapter yet), no clipboard crate (none for iOS).
 eframe = { workspace = true, features = ["default_fonts", "wgpu"] }
 # Reminders and new mail through iPadOS's notifications (`notifications.rs`), through the generated
