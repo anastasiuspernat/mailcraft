@@ -205,6 +205,7 @@ mod ios {
             if !self.trackpad {
                 mailcraft_apple_bridge::trackpad::install(frame);
                 mailcraft_apple_bridge::appearance::install(frame);
+                mailcraft_apple_bridge::foreground::show_while_open();
                 let ctx = ui.ctx().clone();
                 mailcraft_apple_bridge::trackpad::on_input(move || ctx.request_repaint());
                 self.trackpad = true;
@@ -279,10 +280,18 @@ mod ios {
     /// look-up of its provider, the keychain, and notifications. (Signing in with Microsoft or
     /// Google, and the rest the desktop host offers, come later.)
     fn services(ctx: egui::Context) -> Services {
-        let (sync_ctx, mx_ctx, test_ctx, sign_in_ctx, ai_ctx, push_ctx) = (ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx);
+        let (sync_ctx, mx_ctx, test_ctx, sign_in_ctx, ai_ctx, pictures_ctx, push_ctx) =
+            (ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx.clone(), ctx);
         let sync_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancel = sync_cancel.clone();
         Services {
+            // A picture a message keeps on the web, once the owner asked for that message's
+            // pictures: as on the desktop, `fetch` checks where the address leads before it goes
+            // there (never this iPad or a private network) and takes and waits only so much.
+            // (Nothing is kept on the iPad: a picture is asked for again when the message is.)
+            pictures: Some(Box::new(move |url: String| {
+                background(&pictures_ctx, "picture", move || mailcraft_net::pictures::fetch(&url).map_err(|e| e.to_string()))
+            })),
             // As on the desktop: mail arrives in pieces as the run goes, through a short channel.
             sync: Some(Box::new(move |request| {
                 use std::sync::atomic::Ordering;

@@ -156,7 +156,7 @@ fn a_blurred_picture_is_decoded_too_small_to_make_anything_out() {
     let mut pictures = Pictures::default();
     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
         match pictures.blurred(ui.ctx(), &data) {
-            super::images::Picture::Ready(texture) => assert!(texture.size()[0] <= 12, "{:?}", texture.size()),
+            super::images::Picture::Ready(texture) => assert!(texture.resolution()[0] <= 12, "{:?}", texture.resolution()),
             other => panic!("{}", matches!(other, super::images::Picture::Pending)),
         }
         // Asked again, it is the one kept.
