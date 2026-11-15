@@ -50,8 +50,24 @@ impl NoEntry {
     }
 }
 
+/// In the tests, a store in memory: they never touch the system's.
+#[cfg(test)]
+static MEMORY: std::sync::Mutex<Option<std::collections::HashMap<String, String>>> = std::sync::Mutex::new(None);
+
 /// The secret kept under `key`.
 pub fn get(key: &str) -> Option<String> {
+    #[cfg(test)]
+    {
+        MEMORY.lock().ok()?.as_ref()?.get(key).cloned()
+    }
+    #[cfg(not(test))]
+    {
+        get_kept(key)
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn get_kept(key: &str) -> Option<String> {
     let count: usize = entry(key, "n").ok()?.get_password().ok()?.parse().ok().filter(|n| (1..=MAX_PIECES).contains(n))?;
     let mut secret = String::new();
     for i in 0..count {
@@ -62,6 +78,21 @@ pub fn get(key: &str) -> Option<String> {
 
 /// Keep `secret` under `key`, in place of what was there.
 pub fn set(key: &str, secret: &str) -> Result<(), String> {
+    #[cfg(test)]
+    {
+        if let Ok(mut m) = MEMORY.lock() {
+            m.get_or_insert_with(Default::default).insert(key.to_string(), secret.to_string());
+        }
+        Ok(())
+    }
+    #[cfg(not(test))]
+    {
+        set_kept(key, secret)
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn set_kept(key: &str, secret: &str) -> Result<(), String> {
     let chars: Vec<char> = secret.chars().collect();
     let pieces: Vec<String> = chars.chunks(PIECE).map(|c| c.iter().collect()).collect();
     if pieces.is_empty() || pieces.len() > MAX_PIECES {
@@ -85,6 +116,22 @@ pub fn set(key: &str, secret: &str) -> Result<(), String> {
 
 /// Forget what is kept under `key`.
 pub fn delete(key: &str) {
+    #[cfg(test)]
+    {
+        if let Ok(mut m) = MEMORY.lock()
+            && let Some(m) = m.as_mut()
+        {
+            m.remove(key);
+        }
+    }
+    #[cfg(not(test))]
+    {
+        delete_kept(key)
+    }
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn delete_kept(key: &str) {
     for i in 0..MAX_PIECES {
         if let Ok(e) = entry(key, &i.to_string()) {
             let _ = e.delete_credential();

@@ -15,8 +15,7 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
   to, Flag, Delete and the rest). Nothing reacts to a finger passing by.
 - **Reminders and new mail** come as iPadOS notifications. Reminders still to come are handed to
   iPadOS in advance (up to 60, two weeks ahead), so they arrive on time with MailCraft closed.
-  While MailCraft is in front, iPadOS keeps an app's own banners to itself; the status bar then
-  says "🔔 n reminders due". The reminders window never opens by itself.
+  They show while MailCraft is in front too. The reminders window never opens by itself.
 - **The smart Inbox** (Primary, Transactions, Updates, Promotions, Priority, summaries) runs on
   Apple's on-device model (Foundation Models), on an iPad with Apple Intelligence (iPadOS 26, an
   M1 or later, or the A17 Pro iPad mini) with Apple Intelligence turned on. Turn it on in File ›
@@ -28,10 +27,18 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
   touch or scrolling again stops it), and the pointer shows what it is over, as on a Mac.
 - **New-mail notifications while MailCraft is closed** come from MailCraft relay on a computer of
   yours that is always on, paired in File › Options › Push from your computer
-  ([push-relay.md](push-relay.md)).
+  ([push-relay.md](push-relay.md)). The iPad hands the relay its accounts itself, sealed, on your
+  home network, and the notification shows the sender and the subject, which only the iPad can
+  read: MailCraft's notification extension opens them.
 - **Light and dark** follow the iPad's appearance (Settings › Display & Brightness, its schedule
   included) while File › Options › General › Theme is "Use system setting", the default.
 - **Interface size** starts at 110 % on a new iPad install (File › Options › General).
+- **The menu bar** (the pointer at the top of the screen, or ⌘ held): File, Edit, View, Folder,
+  Message and Help, the Mac's menus, with their keys; MailCraft › Settings… (⌘,) opens File ›
+  Options. The ribbon is one row of commands without tabs (the message being written's, while
+  one is); your picture at the top right opens File, Options included, without a keyboard.
+- **Copy and paste** go through the iPad's pasteboard, to and from other apps.
+- **Pictures in mail** download when you ask, as on the desktop; they aren't kept on the iPad.
 
 ## Building
 

@@ -2074,6 +2074,13 @@ fn classic(app: &mut MailApp, ui: &mut Ui, t: &Tokens, tab: &Tab, available: f32
 // ---- the ribbon ----
 
 pub fn show(app: &mut MailApp, ui: &mut Ui) {
+    // No tabs (iPad): Home's commands, or the message being written's.
+    if !app.tab_strip {
+        let name = if crate::windows::compose_window::pane_compose(app).is_some() { "Message" } else { "Home" };
+        let tab = describe_tab(app, name);
+        band(app, ui, &tab, egui::Id::unique("ribbon"));
+        return;
+    }
     let tabs = tabs(app);
     if !tabs.contains(&app.ui.tab.as_str()) {
         app.ui.tab = "Home".into();

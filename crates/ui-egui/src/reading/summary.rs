@@ -35,7 +35,7 @@ pub(super) fn block(app: &mut MailApp, ui: &mut Ui, m: &Message, place: Place, t
     let summary = insight.and_then(|i| i.summary.clone());
     let failed = insight.map(|i| i.failed.clone()).unwrap_or_default();
     let summarizing = mailcraft_engine::ai::summarizing(s, m.id, JobKind::Summarize);
-    let long = mailcraft_engine::ai::words_of(m) >= s.prefs.ai.summary_min_words as usize;
+    let long = mailcraft_engine::ai::words_of(m) >= mailcraft_engine::ai::LIST_SUMMARY_WORDS;
     // The conversation's, kept on its newest message.
     let threads = s.threads();
     let members = threads.members(m.id);

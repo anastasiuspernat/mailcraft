@@ -26,12 +26,16 @@ MailCraft relay: tells MailCraft on your iPad when new mail arrives.
   mailcraft-relay code [--new]            this computer's address and the pairing code to enter on
                                           the iPad (--new: make a new code)
   mailcraft-relay pair                    pair an iPad, and say when it has
+  mailcraft-relay devices                 the paired iPads and the accounts each wants
+  mailcraft-relay unpair <n>              forget the iPad numbered n in `devices`
   mailcraft-relay test                    send a test notification to the paired iPads
   mailcraft-relay run                     watch and notify, until stopped
   mailcraft-relay install                 start with Windows, without a window
   mailcraft-relay uninstall               stop starting with Windows
   mailcraft-relay status                  what is set up, and the end of the log
 
+An iPad paired with the relay brings its own accounts (File › Options › Push from your computer):
+they need no `add` here, and go when the iPad no longer has them.
 Run `add` and `apple-key` at the computer itself (or over Remote Desktop), not over SSH.
 Passwords and sign-ins are kept in this computer's credential store only.";
 
@@ -73,6 +77,8 @@ pub fn run(args: &[String]) -> Result<(), String> {
         "remove" => remove(&folder, rest),
         "apple-key" => apple_key(&folder, rest),
         "pair" => pair_ipad(&folder),
+        "devices" => devices(&folder),
+        "unpair" => unpair(&folder, rest),
         "code" => {
             show_pairing(&folder, rest.iter().any(|a| a == "--new"))?;
             Ok(())
@@ -108,7 +114,14 @@ fn add(folder: &Path, args: &[String]) -> Result<(), String> {
         None if args.iter().any(|a| a == "--google") => (mailcraft_model::provider::google(false).incoming, Some(OAuthProvider::Google)),
         None => config::server_for(&email).ok_or("that isn't an e-mail address")?,
     };
-    let watched = Watched { email: email.clone(), username: option(args, "--user").unwrap_or_default().to_string(), server, sign_in };
+    let watched = Watched {
+        email: email.clone(),
+        username: option(args, "--user").unwrap_or_default().to_string(),
+        server,
+        sign_in,
+        client_id: String::new(),
+        by_hand: true,
+    };
     let account = watched.account();
     let secret = if let Some(oauth) = &account.oauth {
         let whose = if oauth.provider == OAuthProvider::Google { "Google" } else { "Microsoft" };
@@ -224,7 +237,7 @@ fn show_pairing(folder: &Path, renew: bool) -> Result<String, String> {
 
 fn pair_ipad(folder: &Path) -> Result<(), String> {
     let path = config::file_in(folder);
-    let before = Config::load(&path)?.devices.len();
+    let before = Config::load(&path)?.devices.iter().map(|d| (d.id.clone(), d.token.clone())).collect::<Vec<_>>();
     if running() {
         show_pairing(folder, false)?;
         println!("Waiting up to ten minutes for an iPad to pair…");
@@ -232,9 +245,7 @@ fn pair_ipad(folder: &Path) -> Result<(), String> {
         while started.elapsed() < pair::WAIT {
             std::thread::sleep(std::time::Duration::from_secs(2));
             let config = Config::load(&path)?;
-            if config.devices.len() > before
-                && let Some(device) = config.devices.last()
-            {
+            if let Some(device) = config.devices.iter().find(|d| !before.contains(&(d.id.clone(), d.token.clone()))) {
                 println!("Paired with {}.", device.name);
                 return Ok(());
             }
@@ -243,21 +254,61 @@ fn pair_ipad(folder: &Path) -> Result<(), String> {
     }
     let listener =
         std::net::TcpListener::bind(("0.0.0.0", crate::PAIR_PORT)).map_err(|e| format!("port {} can't be listened on ({e})", crate::PAIR_PORT))?;
-    let code = show_pairing(folder, false)?;
+    show_pairing(folder, false)?;
     println!("Waiting up to ten minutes… (Windows may ask whether to let the relay use the network: allow private networks.)");
-    let device = pair::serve(&listener, &code)?;
+    let name = pair::serve(&listener, &config::Settings::new(path))?;
+    println!("Paired with {name}.");
+    Ok(())
+}
+
+fn devices(folder: &Path) -> Result<(), String> {
+    let config = Config::load(&config::file_in(folder))?;
+    if config.devices.is_empty() {
+        println!("No iPad is paired.");
+    }
+    for (n, d) in config.devices.iter().enumerate() {
+        let version = if d.id.is_empty() { " (paired by an older MailCraft: pair it again)" } else { "" };
+        println!("{}. {}{version}", n + 1, d.name);
+        let mut accounts: Vec<String> = config.accounts.iter().filter(|a| d.wants(a)).map(|a| a.email.clone()).collect();
+        accounts.sort();
+        println!("   accounts: {}", if accounts.is_empty() { "none".to_string() } else { accounts.join(", ") });
+    }
+    Ok(())
+}
+
+fn unpair(folder: &Path, args: &[String]) -> Result<(), String> {
+    let n: usize = args.first().and_then(|a| a.parse().ok()).ok_or("which one? `mailcraft-relay unpair 1` (numbers from `devices`)")?;
+    let path = config::file_in(folder);
     let mut config = Config::load(&path)?;
-    if !config.pair(device.clone()) {
-        return Err(format!("{} iPads are paired already: that is the most", config::MAX_DEVICES));
+    let index = n.checked_sub(1).filter(|i| *i < config.devices.len()).ok_or("there is no iPad with that number (see `devices`)")?;
+    let device = config.devices.remove(index);
+    let dropped = config.unwanted();
+    config.accounts.retain(|a| !dropped.iter().any(|d| d.email.eq_ignore_ascii_case(&a.email)));
+    for d in &dropped {
+        config.seen.remove(&d.email.to_ascii_lowercase());
     }
     config.save(&path)?;
-    println!("Paired with {}.", device.name);
+    if !device.id.is_empty() {
+        store::delete(&config::Device::link_key_name(&device.id));
+        store::delete(&config::Device::note_key_name(&device.id));
+    }
+    for d in &dropped {
+        store::delete(&d.secret_key());
+    }
+    println!(
+        "{} is forgotten{}.",
+        device.name,
+        if dropped.is_empty() { String::new() } else { format!(", and so are the accounts only it wanted ({})", dropped.len()) }
+    );
+    restart_if_installed();
     Ok(())
 }
 
 fn test(folder: &Path) -> Result<(), String> {
     let shared = watcher::Shared::open(config::file_in(folder))?;
-    if !shared.notify("MailCraft relay", 1) {
+    let test = Watched { email: "MailCraft relay".into(), by_hand: true, ..Default::default() };
+    let news = watcher::News { count: 1, from: "MailCraft relay".into(), subject: "A test notification".into() };
+    if !shared.notify(&test, &news) {
         return Err("no paired iPad took it (see `mailcraft-relay status`)".into());
     }
     println!("Sent. It should show on the iPad in a few seconds.");

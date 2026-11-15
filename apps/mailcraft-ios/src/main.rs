@@ -89,9 +89,13 @@ mod coast;
 #[cfg(test)]
 mod coast_tests;
 #[cfg(target_os = "ios")]
+mod menu;
+#[cfg(target_os = "ios")]
 mod notifications;
 #[cfg(target_os = "ios")]
 mod push_host;
+#[cfg(target_os = "ios")]
+mod push_keys;
 /// The iPad's keychain, through the same module as the desktop's credential store.
 #[cfg(target_os = "ios")]
 #[path = "../../mailcraft/src/secrets.rs"]
@@ -122,6 +126,8 @@ mod ios {
         coast: crate::coast::Trackpad,
         /// When the window started: the coasting's clock.
         since: std::time::Instant,
+        /// The iPadOS menu bar, filled at the first frame.
+        menus: Option<crate::menu::Menus>,
     }
 
     /// How often the settings are compared with what was written (seconds): iPadOS may stop the
@@ -149,6 +155,9 @@ mod ios {
     impl eframe::App for App {
         fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
             self.app.logic(ctx);
+            // The menu bar: what was chosen there, and which of its items can be chosen now.
+            let menus = self.menus.get_or_insert_with(|| crate::menu::Menus::install(ctx, &self.app));
+            menus.pump(&mut self.app, ctx);
             // The window's settings, written when they changed.
             let now = ctx.input(|i| i.time);
             if now - self.looked >= PREFS_EVERY {
@@ -222,6 +231,8 @@ mod ios {
             ui.painter().rect_filled(ui.ctx().viewport_rect(), 0.0, canvas);
             let safe = ui.ctx().content_rect();
             ui.scope_builder(egui::UiBuilder::new().max_rect(safe), |ui| self.app.ui(ui));
+            // What was copied goes on the iPad's pasteboard.
+            crate::menu::copy_out(ui.ctx());
         }
     }
 
@@ -384,6 +395,8 @@ mod ios {
                 let services = services(cc.egui_ctx.clone());
                 let mut app = MailApp::new(session, services);
                 app.autosave = kept;
+                // The menu bar has the menus: the ribbon is one row of commands, without tabs.
+                app.tab_strip = false;
                 if let Some(path) = app.session.path.clone() {
                     app.services.saver = saver(&cc.egui_ctx, &path);
                 }
@@ -414,6 +427,7 @@ mod ios {
                     trackpad: false,
                     coast: Default::default(),
                     since: std::time::Instant::now(),
+                    menus: None,
                 }))
             }),
         )

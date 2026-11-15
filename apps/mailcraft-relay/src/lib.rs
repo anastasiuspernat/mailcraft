@@ -9,15 +9,16 @@
 //! notification through Apple (`mailcraft_net::apns`), signed with the owner's own push key.
 //!
 //! What goes where:
-//! - Passwords, sign-ins (Microsoft's refresh token) and the push key are kept in the system's
-//!   credential store (`store`), never in a file or a log.
-//! - The settings file (`config`) holds the accounts' addresses and servers, the paired iPads'
-//!   push addresses (device tokens), the push key's id and the team's, and per account the UID
-//!   it has looked up to.
-//! - A notification says which account has new mail and how many messages: never a sender, a
-//!   subject or anything else of a message, which Apple would see.
-//! - Pairing (`pair`) happens on the home network, once: the iPad sends its push address and a
-//!   code the relay shows.
+//! - Passwords, sign-ins (refresh tokens), the push key and each iPad's link and note keys are
+//!   kept in the system's credential store (`store`), never in a file or a log.
+//! - The settings file (`config`) holds the accounts' addresses and servers, the paired iPads
+//!   (their ids, names, push addresses and the accounts each wants), the push key's id and the
+//!   team's, and per account the UID it has looked up to.
+//! - An iPad brings its own accounts (`pair`, over `mailcraft_net::push_link`: paired with the
+//!   code the relay shows, proved by SPAKE2, and sealed after that), and is notified of those and
+//!   of the accounts added here by hand; an account no device wants goes, with its sign-in.
+//! - A notification carries the account, the newest message's sender and its subject sealed
+//!   with that iPad's note key: Apple sees "New mail".
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 

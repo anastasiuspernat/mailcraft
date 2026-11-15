@@ -33,6 +33,23 @@ fn the_longest_wait_ends_it_quietly() {
 }
 
 #[test]
+fn a_server_that_says_nothing_ends_the_wait_quietly_and_the_session_goes_on() {
+    // Gmail sends nothing while it idles: the read times out, DONE goes, and the server's answer
+    // (a line it had begun before the pause included) is read as usual.
+    let mut s = Script::new("+ idling\r\n<quiet>A0001 OK IDLE <quiet>terminated\r\nA0002 OK done\r\n");
+    let mut imap = Imap::resume(&mut s);
+    assert!(imap.idle(LONG).is_err(), "a pause inside the answer to DONE is no answer");
+    let mut s = Script::new("+ idling\r\n<quiet>A0001 OK IDLE terminated\r\nA0002 OK done\r\n");
+    let mut imap = Imap::resume(&mut s);
+    assert_eq!(imap.idle(LONG).unwrap(), Idled::Quiet);
+    imap.noop().unwrap();
+    assert_eq!(s.sent(), "A0001 IDLE\r\nDONE\r\nA0002 NOOP\r\n");
+    // A server that doesn't answer DONE either is gone.
+    let mut s = Script::new("+ idling\r\n<quiet><quiet>");
+    assert!(Imap::resume(&mut s).idle(LONG).is_err());
+}
+
+#[test]
 fn a_refusal_a_goodbye_or_silence_is_an_error() {
     let mut s = Script::new("A0001 BAD unknown command\r\n");
     assert!(matches!(Imap::resume(&mut s).idle(LONG), Err(ProtoError::Rejected(_))));

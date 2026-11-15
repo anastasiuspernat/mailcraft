@@ -1498,6 +1498,9 @@ pub struct MailApp {
     /// What the credential store gave back for each key this session, read in the background
     /// ([`secret_read`]); only what was found. The window asks this, never the store.
     secret_cache: std::collections::HashMap<String, String>,
+    /// What was last handed to the push relay's host ([`push_options::follow`]): a fingerprint
+    /// of the accounts and their secrets, never the secrets.
+    pub(crate) push_handed: Option<u64>,
     /// The background read of the store under way, with the opening it was started for.
     secret_read: Option<(u64, std::sync::mpsc::Receiver<secret_read::SecretRead>)>,
     /// The opening, and whether remembering was on, when the store was last read by itself.
@@ -1643,6 +1646,9 @@ pub struct MailApp {
     pub data_removed: bool,
     /// Save the mailbox by itself a moment after each change (on by default).
     pub autosave: bool,
+    /// The ribbon's tabs are shown (on by default). Off on iPad, whose menu bar has the menus:
+    /// the ribbon is one row of the main tab's commands, or of the message being written.
+    pub tab_strip: bool,
     /// Open account setup when the app starts on a mailbox nobody has set up yet (the host turns
     /// this on for an ordinary start; not for the sample or a mailbox named on the command line).
     pub offer_setup: bool,
@@ -1827,6 +1833,7 @@ impl MailApp {
             ews_certificate: Default::default(),
             secrets_opening: 0,
             secret_cache: Default::default(),
+            push_handed: None,
             secret_read: None,
             secrets_asked: None,
             sync_after_secrets: Vec::new(),
@@ -1896,6 +1903,7 @@ impl MailApp {
             quit_requested: false,
             data_removed: false,
             autosave: true,
+            tab_strip: true,
             offer_setup: false,
             offer_graph_switch: false,
             graph_switch_shown: Default::default(),
@@ -4478,6 +4486,8 @@ impl MailApp {
     /// drops, saving.
     pub fn logic(&mut self, ctx: &egui::Context) {
         self.apply_language();
+        // The push relay gets this iPad's accounts when they change.
+        push_options::follow(self);
         // A .pst import whose window went while it read (closed, or another dialog put in its
         // place) has stopped: what came in is one step to undo, and Undo is free again.
         if self.session.importing_pst() && !matches!(&self.dialog, Some(dialogs::Dialog::ImportPst(d)) if d.is_importing()) {

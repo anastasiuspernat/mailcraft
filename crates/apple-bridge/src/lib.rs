@@ -11,6 +11,9 @@
 //! - [`trackpad`]: the iPad's trackpad and mouse (two-finger scrolling, where the pointer is),
 //!   which the window library doesn't pass on.
 //!
+//! - [`menus`]: the iPadOS menu bar, filled with MailCraft's menus, and the iPad's pasteboard.
+//! - [`notification_service`]: the notification extension, which opens a notification's sealed
+//!   text on the iPad.
 //! - [`foreground`]: MailCraft's notifications shown while it is in front, as iPadOS hides them
 //!   otherwise.
 //!
@@ -19,8 +22,12 @@
 
 pub mod appearance;
 pub mod auth_sheet;
+#[cfg(target_os = "ios")]
+mod delegate;
 pub mod foreground;
+pub mod menus;
 pub mod model;
+pub mod notification_service;
 pub mod push;
 #[cfg(test)]
 mod push_tests;

@@ -1,0 +1,20 @@
+[package]
+name = "mailcraft-ios-notify"
+description = "MailCraft on iPad: the notification extension, which opens a notification's sealed text from the owner's relay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "mailcraft-ios-notify"
+path = "src/main.rs"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+mailcraft-net = { workspace = true }
+mailcraft-apple-bridge = { workspace = true }
+# The note key, in the keychain item MailCraft keeps it in (`../mailcraft-ios/src/push_keys.rs`).
+security-framework = { version = "3", default-features = false }

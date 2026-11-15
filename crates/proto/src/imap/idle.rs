@@ -45,9 +45,10 @@ impl<S: Read + Write> Imap<S> {
     }
 
     /// IDLE on the selected mailbox until the server says it changed, or until `longest` has
-    /// passed (looked at as each line arrives: a server that sends nothing is waited for as long
-    /// as the socket's read timeout lets it, and that read's error ends the session). Then DONE,
-    /// and the server's answer to the IDLE.
+    /// passed (looked at as each line arrives), or until a read times out (the caller sets the
+    /// socket's read timeout to about `longest`: a server that sends nothing while it idles, as
+    /// Gmail does, ends the wait quietly). Then DONE, and the server's answer to the IDLE: a
+    /// server that doesn't answer that either is gone, and that is an error.
     pub fn idle(&mut self, longest: Duration) -> Result<Idled, ProtoError> {
         let started = Instant::now();
         let tag = self.tag();
@@ -63,13 +64,19 @@ impl<S: Read + Write> Imap<S> {
             });
         }
         let mut heard = Idled::Quiet;
+        let _ = self.wire.take_timed_out();
         for _ in 0..self.response_cap {
             if started.elapsed() >= longest {
                 break;
             }
             // Each line is counted by itself: a wait of many minutes may hear many keep-alives.
             self.text_seen = 0;
-            match self.read_response()? {
+            let response = match self.read_response() {
+                Ok(response) => response,
+                Err(_) if self.wire.take_timed_out() => break,
+                Err(e) => return Err(e),
+            };
+            match response {
                 Response::Data(values) => {
                     self.note_data(&values);
                     if is_change(&values) {

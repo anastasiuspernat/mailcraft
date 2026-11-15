@@ -56,6 +56,8 @@ mod pinned;
 #[cfg(not(target_arch = "wasm32"))]
 mod push;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod push_link;
+#[cfg(not(target_arch = "wasm32"))]
 mod send;
 #[cfg(not(target_arch = "wasm32"))]
 mod sync;
@@ -74,6 +76,10 @@ pub mod watch;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod fake;
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+#[path = "push_link_tests.rs"]
+mod push_link_tests;
 #[cfg(test)]
 #[cfg(not(target_arch = "wasm32"))]
 mod push_relay_tests;

@@ -49,9 +49,10 @@ pub struct AiPrefs {
     pub model_path: String,
     /// `auto`: the graphics card when there is one that works; `off`: the processor only.
     pub gpu: GpuChoice,
-    /// New mail is summarised as it comes; off, only when asked.
+    /// No longer read: summaries are made while [`AiPrefs::list_summaries`] is on, and
+    /// otherwise only when asked. Kept so that settings written before still read.
     pub summarize_new: bool,
-    /// Messages with fewer words get no summary.
+    /// No longer read (see `summarize_new`); kept for settings written before.
     pub summary_min_words: u32,
     /// How many days back mail that was already here is sorted and summarised.
     pub backfill_days: u32,
@@ -609,7 +610,7 @@ fn needs_work(s: &Session, m: &Message) -> bool {
     if asks_priority(m) {
         return true;
     }
-    if !s.prefs.ai.summarize_new || m.unfetched {
+    if !s.prefs.ai.list_summaries || m.unfetched {
         return false;
     }
     // The same test the job's kind is chosen by ([`wants_summary`]): a cheaper guess here that
@@ -618,20 +619,18 @@ fn needs_work(s: &Session, m: &Message) -> bool {
     insight.is_some_and(|i| i.summary.is_none()) && m.body.text.len() >= summary_floor(s, m) && wants_summary(s, m)
 }
 
-/// Words below which an unread message gets a summary when summaries show in the list.
+/// Words below which a message gets no summary: a few words say themselves.
 pub const LIST_SUMMARY_WORDS: usize = 12;
 
-/// The fewest words `m` needs for a summary: [`AiPrefs::summary_min_words`], or for unread mail
-/// while summaries show in the message list, [`LIST_SUMMARY_WORDS`].
-fn summary_floor(s: &Session, m: &Message) -> usize {
-    let min = s.prefs.ai.summary_min_words as usize;
-    if s.prefs.ai.list_summaries && !m.read { min.min(LIST_SUMMARY_WORDS) } else { min }
+/// The fewest words `m` needs for a summary, [`LIST_SUMMARY_WORDS`].
+fn summary_floor(_s: &Session, _m: &Message) -> usize {
+    LIST_SUMMARY_WORDS
 }
 
-/// Whether a summary is wanted for `m` as it is sorted: summaries for new mail on, the message
-/// whole and long enough ([`summary_floor`]).
+/// Whether a summary is made for `m` without being asked: only while summaries show in the
+/// message list, for a message whole and long enough ([`summary_floor`]).
 fn wants_summary(s: &Session, m: &Message) -> bool {
-    s.prefs.ai.summarize_new && !m.unfetched && words_of(m) >= summary_floor(s, m)
+    s.prefs.ai.list_summaries && !m.unfetched && words_of(m) >= summary_floor(s, m)
 }
 
 /// Whether `m` is unread, in Primary, and the model hasn't said yet whether it is a priority (and
@@ -953,7 +952,8 @@ pub fn clear(s: &mut Session) -> usize {
 /// it is sorted mail long enough for one, and it has none (nor failed, nor is one on its way).
 /// Whether it was asked for.
 pub fn opened(s: &mut Session, id: Id) -> bool {
-    if !s.prefs.ai.enabled {
+    // Nothing is summarised unasked unless summaries show in the message list.
+    if !s.prefs.ai.enabled || !s.prefs.ai.list_summaries {
         return false;
     }
     let Some(m) = s.mailbox.message(id).cloned() else { return false };

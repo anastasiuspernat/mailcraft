@@ -111,8 +111,11 @@ fn a_priority_lasts_until_its_due_day_or_two_days() {
     assert!(!rows(&mut s).iter().any(|r| r.priority), "two days on, it is ordinary mail");
     // One with a due date lasts to the end of that day, whenever it came.
     let (mut s, inbox) = setup();
-    s.run("ai.options", &json!({"summaryMinWords": 1})).unwrap();
     let dated = add(&mut s, inbox, "Ben", "ben@example.org", "Report", NOW - 60);
+    // Long enough for a summary, which is what carries a due date.
+    if let Ok(m) = s.mailbox.message_mut(dated) {
+        m.body.text = "Please send the quarterly report with the figures for each region by the end of today.".into();
+    }
     let today = s.today();
     let due = format!("{:04}-{:02}-{:02}", today.year, today.month, today.day);
     answer(&mut s, "primary", &[dated], Some(&due));
@@ -182,7 +185,7 @@ fn each_senders_mail_comes_together_in_the_other_parts() {
 }
 
 #[test]
-fn short_unread_mail_gets_a_summary_for_the_list_and_read_mail_doesnt() {
+fn mail_is_summarised_unasked_only_while_summaries_show_in_the_list() {
     let (mut s, inbox) = setup();
     let text = "Could you send me the signed form before our call on Thursday afternoon please?";
     let unread = add(&mut s, inbox, "Ada", "ada@example.org", "Form", NOW - 60);
@@ -198,8 +201,7 @@ fn short_unread_mail_gets_a_summary_for_the_list_and_read_mail_doesnt() {
     let r = s.run("ai.request", &json!({"max": 32})).unwrap();
     let jobs: Vec<Job> = serde_json::from_value(r["jobs"].clone()).unwrap();
     let kind = |id| jobs.iter().find(|j| j.id == id).map(|j| j.kind);
-    assert_eq!(kind(unread), Some(JobKind::Summarize));
-    assert_eq!(kind(read), Some(JobKind::Classify));
+    assert_eq!((kind(unread), kind(read)), (Some(JobKind::Summarize), Some(JobKind::Summarize)));
     s.run("ai.options", &json!({"listSummaries": false})).unwrap();
     s.run("ai.clearInsights", &json!({})).unwrap();
     s.ai.in_flight.clear();

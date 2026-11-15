@@ -8,8 +8,10 @@
 //! bundle id as its topic and a provider token: a JWT signed with ES256 by the owner's own key
 //! (the `.p8` file Apple gives a developer account, with its key id and the team's id). The key
 //! never leaves this computer, and the token is made again only every 40 minutes, as Apple asks
-//! (between 20 and 60). Nothing goes with a notification but what its payload says: the relay
-//! writes which account has new mail and how many, never a sender or a subject.
+//! (between 20 and 60). The connection is kept for the next notification, as Apple asks, and
+//! made again when it fails or has been idle for a while. Nothing goes with a notification but
+//! what its payload says: the relay seals which account has new mail, who from and its subject
+//! with a key only the iPad holds (`push_link::seal_note`), and Apple sees "New mail".
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -28,6 +30,10 @@ pub const SANDBOX: &str = "api.sandbox.push.apple.com";
 const TOKEN_LIFE: Duration = Duration::from_secs(40 * 60);
 /// The longest payload Apple takes for a notification.
 const MAX_PAYLOAD: usize = 4096;
+/// A connection idle this long is made again rather than trusted.
+const IDLE_CONNECTION: Duration = Duration::from_secs(20 * 60);
+/// How long Apple keeps a notification for a device that is off: then it is dropped.
+const KEEP_FOR: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// The owner's key for Apple's push service.
 pub struct Key {
@@ -106,17 +112,32 @@ pub fn is_device_token(token: &str) -> bool {
     (32..=200).contains(&token.len()) && token.len().is_multiple_of(2) && token.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// A sender of notifications: the key, and the token made with it.
+/// What goes with one notification besides its payload.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Notice<'a> {
+    /// Notifications with the same id replace one another on the device (at most 64 bytes).
+    pub collapse_id: Option<&'a str>,
+}
+
+/// A connection kept to Apple: the stream, the next stream id, when it was last used.
+struct Open {
+    stream: transport::Stream<'static>,
+    next: u32,
+    used: Instant,
+}
+
+/// A sender of notifications: the key, the token made with it, and the connection.
 pub struct Apns {
     key: Key,
     host: String,
     token: Option<(String, Instant)>,
+    open: Option<Open>,
 }
 
 impl Apns {
     /// To Apple's production server (`PRODUCTION`), or its sandbox.
     pub fn new(key: Key, host: &str) -> Apns {
-        Apns { key, host: host.to_string(), token: None }
+        Apns { key, host: host.to_string(), token: None, open: None }
     }
 
     fn provider_token(&mut self) -> Result<String, PushError> {
@@ -131,8 +152,20 @@ impl Apns {
         Ok(token)
     }
 
-    /// Send `payload` (JSON) to `device` for the app `topic` (its bundle id), as an alert.
-    pub fn send(&mut self, device: &str, topic: &str, payload: &str) -> Result<(), PushError> {
+    fn connect(&self) -> Result<Open, PushError> {
+        let server = Server { host: self.host.clone(), port: 443, security: Security::Tls };
+        let config = crate::tls::client_config(crate::tls::Purpose::Push).map_err(PushError::Failed)?;
+        let (stream, _) = transport::open_with(&server, Service::Http, &Patience::default(), Some(config))
+            .map_err(|e| PushError::Failed(format!("Apple's push server couldn't be reached: {e}")))?;
+        if stream.alpn().as_deref() != Some(b"h2".as_slice()) {
+            return Err(PushError::Failed("Apple's push server didn't agree to HTTP/2".into()));
+        }
+        Ok(Open { stream, next: 1, used: Instant::now() })
+    }
+
+    /// Send `payload` (JSON) to `device` for the app `topic` (its bundle id), as an alert, on the
+    /// kept connection (made again once when it fails).
+    pub fn send(&mut self, device: &str, topic: &str, payload: &str, notice: &Notice) -> Result<(), PushError> {
         if !is_device_token(device) {
             return Err(PushError::Gone("not a device token".into()));
         }
@@ -140,23 +173,41 @@ impl Apns {
             return Err(PushError::Failed("the notification is too long".into()));
         }
         let bearer = format!("bearer {}", self.provider_token()?);
-        let server = Server { host: self.host.clone(), port: 443, security: Security::Tls };
-        let config = crate::tls::client_config(crate::tls::Purpose::Push).map_err(PushError::Failed)?;
-        let (mut stream, _) = transport::open_with(&server, Service::Http, &Patience::default(), Some(config))
-            .map_err(|e| PushError::Failed(format!("Apple's push server couldn't be reached: {e}")))?;
-        if stream.alpn().as_deref() != Some(b"h2".as_slice()) {
-            return Err(PushError::Failed("Apple's push server didn't agree to HTTP/2".into()));
-        }
-        let headers = [
+        let expires = (SystemTime::now() + KEEP_FOR).duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0).to_string();
+        let mut headers = vec![
             ("authorization", bearer.as_str()),
             ("apns-topic", topic),
             ("apns-push-type", "alert"),
             ("apns-priority", "10"),
+            ("apns-expiration", expires.as_str()),
             ("content-type", "application/json"),
         ];
-        let answer = crate::h2::post(&mut stream, &self.host, &format!("/3/device/{device}"), &headers, payload.as_bytes())
-            .map_err(|e| PushError::Failed(format!("Apple's push server: {e}")))?;
-        verdict(answer.status, &answer.body)
+        if let Some(id) = notice.collapse_id.filter(|id| !id.is_empty() && id.len() <= 64) {
+            headers.push(("apns-collapse-id", id));
+        }
+        let path = format!("/3/device/{device}");
+        for attempt in 0..2 {
+            let stale = self.open.as_ref().is_none_or(|o| o.used.elapsed() > IDLE_CONNECTION || o.next > crate::h2::LAST_STREAM);
+            if stale {
+                self.open = None;
+                self.open = Some(self.connect()?);
+            }
+            let Some(open) = self.open.as_mut() else { continue };
+            let stream_id = open.next;
+            open.next = open.next.saturating_add(2);
+            open.used = Instant::now();
+            match crate::h2::post_on(&mut open.stream, stream_id, &self.host, &path, &headers, payload.as_bytes()) {
+                Ok(answer) => return verdict(answer.status, &answer.body),
+                // A kept connection Apple has let go of: once more on a new one.
+                Err(e) => {
+                    self.open = None;
+                    if attempt == 1 || stream_id == 1 {
+                        return Err(PushError::Failed(format!("Apple's push server: {e}")));
+                    }
+                }
+            }
+        }
+        Err(PushError::Failed("Apple's push server couldn't be reached".into()))
     }
 }
 
@@ -188,6 +239,24 @@ pub fn new_mail_payload(account: &str, count: usize, body: &str) -> String {
             "thread-id": account,
         },
         "count": count,
+    })
+    .to_string()
+}
+
+/// The payload of a notification whose text is sealed for the iPad (`push_link::seal_note`):
+/// Apple carries `title` and `body` (words that say nothing of the mail, shown as they are when
+/// the iPad can't open the rest), and the iPad's notification extension (`mutable-content`)
+/// replaces them with what `sealed` says. `thread` groups an account's notifications without
+/// naming it (`push_link::opaque_id`).
+pub fn sealed_payload(sealed: &str, thread: &str, title: &str, body: &str) -> String {
+    serde_json::json!({
+        "aps": {
+            "alert": { "title": title, "body": body },
+            "sound": "default",
+            "mutable-content": 1,
+            "thread-id": thread,
+        },
+        "m": sealed,
     })
     .to_string()
 }
