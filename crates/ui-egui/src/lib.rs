@@ -164,6 +164,8 @@ pub mod ribbon;
 pub mod rule_sync;
 #[cfg(test)]
 mod rule_sync_tests;
+#[cfg(test)]
+mod save_soon_tests;
 pub mod scheduling;
 mod search_pills;
 #[cfg(test)]
@@ -4708,6 +4710,19 @@ impl MailApp {
         } else if !asked {
             let left = u64::try_from(EVERY_SECS.saturating_sub(waited)).unwrap_or(1).max(1);
             ctx.request_repaint_after(std::time::Duration::from_secs(left));
+        }
+    }
+
+    /// Hand what changed to the background saver now, without waiting the autosave's few seconds
+    /// or for the writing: for a host about to be stopped without warning (iPadOS, on going to the
+    /// background). Nothing when nothing changed, when autosave is off or with no saver.
+    pub fn save_soon(&mut self) {
+        if self.data_removed || self.opening.is_some() || !self.autosave || self.session.rev() == self.saved_rev || self.after_save.is_some() {
+            return;
+        }
+        if let (Some(saver), Some(path)) = (&self.services.saver, &self.session.path) {
+            saver.submit(path, &self.session.mailbox, self.session.rev());
+            self.last_autosave = now_ms();
         }
     }
 

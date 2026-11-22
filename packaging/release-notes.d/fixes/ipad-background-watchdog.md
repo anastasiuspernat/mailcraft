@@ -1,0 +1,1 @@
+- MailCraft on iPad no longer goes on drawing in the background: brought back after a while (from another app, or the screen locked), it could be stopped by iPadOS for not answering in time. What changed is handed to be saved on the way out.

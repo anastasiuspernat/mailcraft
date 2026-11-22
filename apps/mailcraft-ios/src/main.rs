@@ -128,6 +128,23 @@ mod ios {
         since: std::time::Instant,
         /// The iPadOS menu bar, filled at the first frame.
         menus: Option<crate::menu::Menus>,
+        /// In the background, where the window waits.
+        away: bool,
+    }
+
+    impl App {
+        /// The window's settings, written when they changed since they were last.
+        fn write_prefs(&mut self) {
+            if let Some(path) = &self.prefs_path
+                && let Ok(bytes) = serde_json::to_vec_pretty(&self.app.prefs())
+                && bytes != self.last_prefs
+            {
+                match mailcraft_engine::store::write_atomic(path, &bytes) {
+                    Ok(()) => self.last_prefs = bytes,
+                    Err(e) => log::warn!("the window's settings couldn't be saved: {e}"),
+                }
+            }
+        }
     }
 
     /// How often the settings are compared with what was written (seconds): iPadOS may stop the
@@ -158,6 +175,24 @@ mod ios {
 
     impl eframe::App for App {
         fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+            // In the background (another app in front, the screen locked) the window does
+            // nothing and asks for no frames: iPadOS takes drawing there badly, and stops an app
+            // whose main thread is still busy when it is brought back. Going there, what changed
+            // is written first; coming back, the window library asks for a frame.
+            if mailcraft_apple_bridge::lifecycle::in_background() {
+                if !self.away {
+                    self.away = true;
+                    log::info!("in the background: the window waits");
+                    self.write_prefs();
+                    // (Handed to the saver's thread, never waited for here.)
+                    self.app.save_soon();
+                }
+                return;
+            }
+            if self.away {
+                self.away = false;
+                log::info!("in front again");
+            }
             self.app.logic(ctx);
             // The menu bar: what was chosen there, and which of its items can be chosen now.
             let menus = self.menus.get_or_insert_with(|| crate::menu::Menus::install(ctx, &self.app));
@@ -166,15 +201,7 @@ mod ios {
             let now = ctx.input(|i| i.time);
             if now - self.looked >= PREFS_EVERY {
                 self.looked = now;
-                if let Some(path) = &self.prefs_path
-                    && let Ok(bytes) = serde_json::to_vec_pretty(&self.app.prefs())
-                    && bytes != self.last_prefs
-                {
-                    match mailcraft_engine::store::write_atomic(path, &bytes) {
-                        Ok(()) => self.last_prefs = bytes,
-                        Err(e) => log::warn!("the window's settings couldn't be saved: {e}"),
-                    }
-                }
+                self.write_prefs();
             }
             // (An idle window draws nothing, so it looks again by itself.)
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(PREFS_EVERY));
@@ -214,6 +241,11 @@ mod ios {
         }
 
         fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+            // (Nothing is laid out in the background, so nothing there asks for another frame;
+            // iPadOS shows the picture it took on the way out, and nothing drawn now reaches it.)
+            if self.away {
+                return;
+            }
             // The trackpad's scrolling and pointer, which the window library doesn't pass on.
             if !self.trackpad {
                 mailcraft_apple_bridge::trackpad::install(frame);
@@ -438,6 +470,7 @@ mod ios {
                     coast: Default::default(),
                     since: std::time::Instant::now(),
                     menus: None,
+                    away: false,
                 }))
             }),
         )

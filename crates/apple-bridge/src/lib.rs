@@ -16,6 +16,7 @@
 //!   text on the iPad.
 //! - [`foreground`]: MailCraft's notifications shown while it is in front, as iPadOS hides them
 //!   otherwise.
+//! - [`lifecycle`]: whether MailCraft is in the background, where it stops drawing.
 //!
 //! Elsewhere (not iPadOS) everything here does nothing and says so.
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
@@ -25,6 +26,7 @@ pub mod auth_sheet;
 #[cfg(target_os = "ios")]
 mod delegate;
 pub mod foreground;
+pub mod lifecycle;
 pub mod menus;
 pub mod model;
 pub mod notification_service;
