@@ -256,6 +256,7 @@ fn direction_label(sort: SortBy, descending: bool) -> &'static str {
 fn list_header(app: &mut MailApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), HEADER_H), Sense::hover());
+    app.hit.add("listHeader", 0, r);
     let rows_end = r.max.x - lane_width(app);
 
     // The arrow: up while the list starts where its arrangement naturally starts (the newest,
@@ -303,52 +304,52 @@ fn list_header(app: &mut MailApp, ui: &mut Ui) {
         }
     });
 
-    // The tabs. A filter that has none (Flagged, Has Attachments, To Me) shows as a third one
-    // while it is in use.
-    let width = |f: Filter| ui.ctx().fonts_mut(|fonts| fonts.layout_no_wrap(tl!(f.label()).to_string(), regular(SENDER_TEXT), t.text).size().x);
-    let mut tabs = vec![(Filter::All, 0u64, width(Filter::All)), (Filter::Unread, 1, width(Filter::Unread))];
+    // The filters: Unread, a switch (a pill while it is on and the list shows unread mail alone,
+    // its word while every message shows), and a filter of the menu's (Flagged, Has
+    // Attachments, To Me) as a second pill while it is in use, which a click turns off.
+    let pill_font = |on: bool| if on { semibold(LIST_TEXT + 1.0) } else { regular(LIST_TEXT + 1.0) };
+    let width = |f: Filter, on: bool| ui.ctx().fonts_mut(|fonts| fonts.layout_no_wrap(tl!(f.label()).to_string(), pill_font(on), t.text).size().x);
+    let mut tabs = vec![(Filter::Unread, 1u64, width(Filter::Unread, filter == Filter::Unread))];
     if !matches!(filter, Filter::All | Filter::Unread) {
-        tabs.push((filter, 2, width(filter)));
+        tabs.push((filter, 2, width(filter, true)));
     }
-    // A tab is its text with a little either side (the line under it is that wide), and the
-    // next one starts 14 further on.
-    let mut x = r.min.x + TEXT_LEFT - 1.0;
-    // In a list too narrow for them all, the tab in use is the last to give: the others are
-    // cut short, then left out (the arrangement's menu has every filter), then it is cut too.
-    let mut over = tabs.iter().map(|(.., w)| w + 3.0).sum::<f32>() + TAB_GAP * tabs.len().saturating_sub(1) as f32 - (sr.min.x - 8.0 - x);
-    for (.., w) in tabs.iter_mut().rev().filter(|(f, ..)| *f != filter) {
-        let cut = over.clamp(0.0, (*w - TAB_MIN).max(0.0));
-        *w -= cut;
-        over -= cut;
+    let mut x = r.min.x + TEXT_LEFT - PILL_PAD;
+    // In a list too narrow for both, the one in use stays and is cut short last.
+    let room = sr.min.x - 8.0 - x;
+    let need =
+        |tabs: &[(Filter, u64, f32)]| tabs.iter().map(|(.., w)| w + 2.0 * PILL_PAD).sum::<f32>() + TAB_GAP * tabs.len().saturating_sub(1) as f32;
+    if need(&tabs) > room && tabs.len() > 1 {
+        tabs.retain(|(f, ..)| *f == filter);
     }
-    while over > 0.0 {
-        let Some(i) = tabs.iter().rposition(|(f, ..)| *f != filter) else { break };
-        let (.., w) = tabs.remove(i);
-        over -= w + 3.0 + TAB_GAP;
-    }
+    let over = (need(&tabs) - room).max(0.0);
+    let mid = r.min.y + 33.0;
     for (f, n, w) in tabs {
         let on = f == filter;
-        let label = tl!(f.label());
-        let w = if on { w - over.max(0.0) } else { w };
+        let w = (w - over).max(0.0);
         if w < TAB_MIN / 2.0 {
             continue;
         }
-        let tab = Rect::from_min_max(pos2(x, r.min.y + 18.0), pos2(x + w + 3.0, r.max.y));
-        let resp = ui.interact(tab.expand2(vec2(5.0, 0.0)), ui.scope_id().with(("list_tab", n)), Sense::click());
+        let tab = Rect::from_min_max(pos2(x, mid - PILL_H / 2.0), pos2(x + w + 2.0 * PILL_PAD, mid + PILL_H / 2.0));
+        let resp = ui.interact(tab.expand2(vec2(2.0, 4.0)), ui.scope_id().with(("list_tab", n)), Sense::click());
         app.hit.add("listTab", n, tab);
-        paint_clipped(ui.painter(), pos2(x + 2.0, r.min.y + 31.5), w + 1.0, label, regular(SENDER_TEXT), if on { t.accent_text } else { t.text });
-        let under = Rect::from_min_max(pos2(tab.min.x, r.max.y - 1.0), tab.max);
         if on {
-            ui.painter().rect_filled(under, 0.0, t.accent_text);
+            ui.painter().rect_filled(tab, PILL_H / 2.0, t.accent_soft);
         } else if resp.hovered() {
-            ui.painter().rect_filled(under, 0.0, t.border_strong);
+            ui.painter().rect_filled(tab, PILL_H / 2.0, t.hover);
         }
-        if resp.clicked() && !on {
-            let _ = app.run("view.filter", json!({"value": f}));
+        let ink = if on { t.accent_soft_text } else { t.text };
+        paint_clipped(ui.painter(), pos2(x + PILL_PAD, mid), w + 1.0, tl!(f.label()), pill_font(on), ink);
+        if resp.clicked() {
+            let to = if on { Filter::All } else { f };
+            let _ = app.run("view.filter", json!({"value": to}));
         }
         x = tab.max.x + TAB_GAP;
     }
 }
+
+/// A filter's pill in the list's header: its height, and the room either side of its word.
+const PILL_H: f32 = 24.0;
+const PILL_PAD: f32 = 10.0;
 
 /// The arrow that says which way the list runs: a stem with a head, 7 wide and 12 tall.
 fn paint_direction(p: &egui::Painter, c: egui::Pos2, up: bool, color: Color32) {
@@ -645,6 +646,8 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
         tops.push(y);
         let h = if row.more.is_some() {
             more_h(row_h)
+        } else if row.priority && !one_line {
+            PRIORITY_ROW_H
         } else if summaries && app.session.mailbox.message(row.id).is_some_and(|m| crate::ai_tabs::list_summary(&app.session, m).is_some()) {
             summary_h
         } else {
@@ -777,6 +780,12 @@ const PRIORITY_FRAME: f32 = 4.0;
 const PRIORITY_INSET: f32 = 6.0;
 const PRIORITY_ROUNDING: f32 = 6.0;
 const PRIORITY_PAD: f32 = 6.0;
+/// A row of the Priority box: two lines of the subject's size, the sender and after it the summary,
+/// with room above and under them (as Apple's Mail on iPad has it).
+const PRIORITY_ROW_H: f32 = 2.0 * PRIORITY_PITCH + 2.0 * PRIORITY_ROW_PAD + 1.0;
+/// From one line of a Priority row to the next, and the room above its first and under its last.
+const PRIORITY_PITCH: f32 = 15.0;
+const PRIORITY_ROW_PAD: f32 = 9.0;
 
 /// How tall the Priority box is while it says "Reading mail…": its heading and one line.
 const READING_BOX_H: f32 = GROUP_H + 34.0;
@@ -1015,10 +1024,18 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         .on_hover_text(if unread { tl!("Mark as read") } else { tl!("Mark as unread") });
     app.hit.add("messageRead", row.id, strip);
     let one = app.session.prefs.one_line;
-    let line1 = if one { rect.center().y } else { rect.min.y + SENDER_Y };
+    // A row of the Priority box: the sender and the summary after it, two lines at most.
+    let compact = row.priority && !one;
+    let line1 = if one {
+        rect.center().y
+    } else if compact {
+        rect.min.y + PRIORITY_ROW_PAD + PRIORITY_PITCH / 2.0
+    } else {
+        rect.min.y + SENDER_Y
+    };
     let line2 = if one { rect.center().y } else { rect.min.y + SUBJECT_Y };
     // With tighter spacing a row's lines move up by half of what it gave up (`view.density`).
-    let lift = tightening(app.session.prefs.tight_spacing, one) / 2.0;
+    let lift = if compact { 0.0 } else { tightening(app.session.prefs.tight_spacing, one) / 2.0 };
     let (line1, line2) = if one { (line1, line2) } else { (line1 - lift, line2 - lift) };
     // A conversation's row has an arrow between the read switch and the text (#503): a click opens
     // or closes it, as Right and Left do.
@@ -1142,6 +1159,33 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
     // Where the time ends, and where the text of every line does.
     let time_end = rect.max.x - TIME_RIGHT;
     let text_end = rect.max.x - TEXT_RIGHT;
+    if compact {
+        priority_text(
+            app,
+            ui,
+            row,
+            &m,
+            rect,
+            left,
+            &who,
+            line1,
+            quick.as_ref().map(|_| delete_rect.union(flag_rect)),
+            &t,
+            fill.is_some() && selected,
+        );
+        if let Some((delete, flag)) = &quick {
+            for (resp, at, icon, color) in
+                [(delete, delete_rect, "delete", t.text_dim), (flag, flag_rect, "flag", if flagged { t.icon } else { t.text_dim })]
+            {
+                if resp.hovered() {
+                    ui.painter().rect_filled(at, 4.0, t.pressed);
+                }
+                icons::paint(ui.painter(), Rect::from_center_size(at.center(), vec2(16.0, 16.0)), icon, color, t.accent);
+            }
+        }
+        row_actions(app, ui, &resp, row, &m, selected, unread, quick.as_ref(), arrow.as_ref(), &read_resp);
+        return;
+    }
 
     // The sender's line. On its right, the marks: the flag in its own column at the row's end
     // (the quick actions take that place while the pointer is over the row), the others before it.
@@ -1364,6 +1408,23 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         p.with_clip_rect(clip).galley(pos2(left, rect.min.y + PREVIEW_TOP), galley, t.text_dim);
     }
 
+    row_actions(app, ui, &resp, row, &m, selected, unread, quick.as_ref(), arrow.as_ref(), &read_resp);
+}
+
+/// What a row does with a click, a drag, its quick actions, its arrow and its read switch.
+#[allow(clippy::too_many_arguments)]
+fn row_actions(
+    app: &mut MailApp,
+    ui: &Ui,
+    resp: &egui::Response,
+    row: &Row,
+    m: &Message,
+    selected: bool,
+    unread: bool,
+    quick: Option<&(egui::Response, egui::Response)>,
+    arrow: Option<&egui::Response>,
+    read_resp: &egui::Response,
+) {
     // Quick actions over the row under the pointer.
     if resp.hovered() && !selected {
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(400));
@@ -1374,7 +1435,7 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         let ids: Vec<Id> = if selected { app.session.acting_on() } else { row.members.clone() };
         resp.dnd_set_drag_payload(MessageDrag(ids));
     }
-    if let Some((delete, flag)) = &quick {
+    if let Some((delete, flag)) = quick {
         if delete.clicked() {
             let _ = app.run("mail.delete", json!({"ids": row.members}));
             return;
@@ -1383,7 +1444,7 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
             let _ = app.run("mail.toggleFlag", json!({"ids": [row.id]}));
         }
     }
-    if let Some(arrow) = &arrow
+    if let Some(arrow) = arrow
         && arrow.clicked()
     {
         let command = if row.open { "mail.collapseConversation" } else { "mail.expandConversation" };
@@ -1395,8 +1456,73 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         let (command, ids) = if unread { ("mail.markRead", row.members.clone()) } else { ("mail.markUnread", vec![row.id]) };
         let _ = app.run(command, json!({"ids": ids}));
     }
-    clicks(app, ui, &resp, row, &m, selected);
+    clicks(app, ui, resp, row, m, selected);
 }
+
+/// A Priority row's text, from `left` on the line at `line1`: the sender, a faint envelope, then
+/// the summary (or, without one, the start of the message), all in the subject's size and wrapped
+/// to two lines at most. No subject and no time: the text has the row's whole width. `quick` is
+/// where the quick actions are drawn over it, on the row under the pointer.
+#[allow(clippy::too_many_arguments)]
+fn priority_text(
+    app: &mut MailApp,
+    ui: &Ui,
+    row: &Row,
+    m: &Arc<Message>,
+    rect: Rect,
+    left: f32,
+    who: &str,
+    line1: f32,
+    quick: Option<Rect>,
+    t: &Tokens,
+    selected: bool,
+) {
+    let p = ui.painter();
+    let end = rect.max.x - TIME_RIGHT;
+    if end - left < 20.0 {
+        return;
+    }
+    let said: Arc<str> = match crate::ai_tabs::list_summary(&app.session, m) {
+        Some(text) => text.into(),
+        None => preview(ui, m, 400),
+    };
+    let unread = row.unread > 0;
+    let line = |font, color| egui::text::TextFormat { font_id: font, color, line_height: Some(PRIORITY_PITCH), ..Default::default() };
+    let mut job = egui::text::LayoutJob::default();
+    let who_font = if unread { bold(LIST_TEXT) } else { semibold(LIST_TEXT) };
+    job.append(who, 0.0, line(who_font, t.text));
+    // Room for the envelope between the two.
+    job.append(&said, ENVELOPE_ROOM, line(regular(LIST_TEXT), t.text_dim));
+    job.wrap = egui::text::TextWrapping { max_width: end - left, max_rows: 2, break_anywhere: false, overflow_character: Some('…') };
+    let galley = p.layout_job(job);
+    let top = line1 - PRIORITY_PITCH / 2.0;
+    // Where the sender's name ends (its last letter, on the first line): the envelope goes in the
+    // room after it.
+    let who_end = galley
+        .rows
+        .first()
+        .and_then(|r| r.glyphs.get(who.chars().count().checked_sub(1)?).map(|g| (g.max_x(), r.pos.y + r.size.y / 2.0)))
+        .unwrap_or((0.0, PRIORITY_PITCH / 2.0));
+    let envelope_at = pos2(left + who_end.0 + ENVELOPE_ROOM / 2.0, top + who_end.1);
+    let clip = Rect::from_min_max(pos2(left, rect.min.y), pos2(end, rect.max.y - 1.0)).intersect(p.clip_rect());
+    let p = p.with_clip_rect(clip);
+    p.galley(pos2(left, top), galley, t.text);
+    let faint = if selected { t.text_dim } else { t.text_dim.gamma_multiply(0.7) };
+    icons::paint(&p, Rect::from_center_size(envelope_at, vec2(11.0, 11.0)), "mail", faint, t.accent);
+    app.hit.add("messageSender", row.id, Rect::from_min_max(pos2(left, line1 - 7.0), pos2(left + who_end.0, line1 + 7.0)));
+    app.hit.add("priorityText", row.id, Rect::from_min_max(pos2(left, top), pos2(end, top + 2.0 * PRIORITY_PITCH)));
+    // The quick actions sit on a patch of the row's own shade, over the text's end.
+    if let Some(at) = quick {
+        let shade = if selected { t.selection } else { t.surface };
+        p.rect_filled(at.expand(2.0), 4.0, shade);
+        if !selected {
+            p.rect_filled(at.expand(2.0), 4.0, t.hover_subtle);
+        }
+    }
+}
+
+/// The room a Priority row keeps for the envelope between the sender and the summary.
+const ENVELOPE_ROOM: f32 = 20.0;
 
 fn clicks(app: &mut MailApp, ui: &Ui, resp: &egui::Response, row: &Row, m: &Message, selected: bool) {
     let (id, copy) = (row.id, row.copy);
@@ -1495,6 +1621,8 @@ mod hidden_selection_tests;
 mod open_conversation_tests;
 #[cfg(test)]
 mod overlay_scroll_tests;
+#[cfg(test)]
+mod priority_rows_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1690,11 +1818,11 @@ mod tests {
         let mut harness = window(app(), (1280.0, 800.0));
         let rows = drawn(&mut harness);
         let (row, rect) = rows[3].clone();
-        let list = at(&harness, "listTab", 0).min.x - (TEXT_LEFT - 1.0);
+        let list = at(&harness, "listHeader", 0).min.x;
         assert_eq!(rect.min.x, list, "a row starts at the list's edge");
         assert_eq!(rect.height(), ROW_H);
         // Under the header, with its heading: nothing of the list is above the header's end.
-        let header_end = at(&harness, "listTab", 0).max.y;
+        let header_end = at(&harness, "listHeader", 0).max.y;
         assert_eq!(rows[0].1.min.y, header_end + GROUP_H);
 
         let strip = at(&harness, "messageRead", row.id);
@@ -1741,24 +1869,25 @@ mod tests {
         let filter = |harness: &Window| harness.state().session.view.filter;
         let tab = |harness: &Window, n: u64| harness.state().hit.rect("listTab", n);
         assert_eq!(filter(&harness), Filter::All);
-        assert!(tab(&harness, 0).is_some() && tab(&harness, 1).is_some() && tab(&harness, 2).is_none());
-        let (all, unread) = (at(&harness, "listTab", 0), at(&harness, "listTab", 1));
-        assert!(all.max.x < unread.min.x && unread.max.x < at(&harness, "listSort", 0).min.x, "tabs on the left, the arrangement on the right");
+        assert!(tab(&harness, 0).is_none() && tab(&harness, 1).is_some() && tab(&harness, 2).is_none(), "Unread alone, no All");
+        let unread = at(&harness, "listTab", 1);
+        assert!(unread.max.x < at(&harness, "listSort", 0).min.x, "Unread on the left, the arrangement on the right");
 
+        // Unread is a switch: on, the list shows unread mail alone; off again, all of it.
         let everything = drawn(&mut harness).len();
         click_at(&mut harness, unread.center());
         assert_eq!(filter(&harness), Filter::Unread);
         let rows = drawn(&mut harness);
         assert!(!rows.is_empty() && rows.len() < everything && rows.iter().all(|(row, _)| row.unread > 0));
-        click_at(&mut harness, all.center());
+        click_at(&mut harness, unread.center());
         assert_eq!((filter(&harness), drawn(&mut harness).len()), (Filter::All, everything));
 
-        // A filter that has no tab of its own.
+        // A filter that has no switch of its own shows as a pill after Unread, and a click turns it off.
         harness.state_mut().execute("view.filter", json!({"value": "flagged"})).unwrap();
         harness.run_steps(3);
         let third = at(&harness, "listTab", 2);
         assert!(third.min.x > at(&harness, "listTab", 1).max.x && third.max.x < at(&harness, "listSort", 0).min.x);
-        click_at(&mut harness, all.center());
+        click_at(&mut harness, third.center());
         assert_eq!(filter(&harness), Filter::All);
         assert!(tab(&harness, 2).is_none());
 

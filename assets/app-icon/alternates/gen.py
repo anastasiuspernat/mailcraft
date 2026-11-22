@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: MailCraft contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
-"""Writes the app icon in each colour scheme, from one template and a palette per scheme.
+"""Writes the earlier app icon (an envelope that is also a calendar page) in each colour scheme,
+from one template and a palette per scheme.
 
     python3 assets/app-icon/alternates/gen.py <out-dir>
 
-writes calmail-<scheme>.svg for every scheme below. "blue" is the app icon itself
-(assets/app-icon/source/mailcraft.svg); the others are kept for the future and not used yet.
+writes calmail-<scheme>.svg for every scheme below. None is the app icon any more (that is
+assets/app-icon/source/mailcraft.svg, another drawing); they are kept, not used.
 """
 import sys, os
 out = sys.argv[1]

@@ -2,16 +2,15 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! `cargo xtask icon`: write MailCraft's app icon in every size the platforms want.
 //!
-//! The source is one vector drawing, `assets/app-icon/source/mailcraft.svg`: an envelope that is
-//! also a calendar page, with its two ring tabs, in front of two tilted sheets, on a rounded tile
-//! in blue. It was drawn by hand for MailCraft (design: Martin Ball); nothing is traced or copied
-//! from any other product's icon. It is rendered with `resvg`, a pure-Rust SVG renderer, here in
+//! The source is one vector drawing, `assets/app-icon/source/mailcraft.svg`: three stacked
+//! envelopes on a rounded tile, cyan to blue (Harbor, the owner's design). It was written for
+//! MailCraft; nothing is traced or copied from any other product's icon. It is rendered with `resvg`, a pure-Rust SVG renderer, here in
 //! xtask only: the program itself never reads the SVG, only the files written from it.
 //!
 //! The tile is fitted to the canvas, whatever margin the drawing has round it (the bounding box of
 //! what it draws, made square about its centre). The macOS renders sit on Apple's 824/1024 grid,
 //! with the margin macOS icons keep. The 16–48 px renders show the drawing a little closer inside
-//! the same tile, so the page and its envelope still read.
+//! the same tile, so the envelopes still read.
 //!
 //! Output (all listed in ATTRIBUTION.md): `assets/app-icon/mailcraft-1024.png`,
 //! `mailcraft-macos-512.png` (with the margin macOS icons keep), `mailcraft.ico`, `mailcraft.icns`

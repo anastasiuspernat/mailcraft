@@ -110,12 +110,9 @@ pub(crate) fn row(app: &mut MailApp, ui: &mut Ui) {
             if resp.has_focus() {
                 resp.scroll_to_me(None);
             }
-            let under = Rect::from_min_max(pos2(rect.min.x + 2.0, rect.max.y - 2.5), pos2(rect.max.x - 2.0, rect.max.y));
-            if on {
-                ui.painter().rect_filled(under, 1.0, t.accent_text);
-            } else if resp.hovered() {
+            // The tab in use is its name in the accent, without a line under it.
+            if !on && resp.hovered() {
                 ui.painter().rect_filled(rect.shrink2(vec2(1.0, 3.0)), 4.0, t.hover_subtle);
-                ui.painter().rect_filled(under, 1.0, t.border_strong);
             }
             if resp.has_focus() {
                 ui.painter().rect_stroke(rect.shrink2(vec2(1.0, 3.0)), 4.0, Stroke::new(1.5, t.accent), egui::StrokeKind::Inside);

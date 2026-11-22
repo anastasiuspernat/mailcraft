@@ -167,7 +167,8 @@ fn the_all_tab_keeps_what_was_selected_in_the_unread_tab() {
     let (_, unread) = unread_tab(&mut w);
     click_on(&mut w, "message", unread);
     still_selected(&mut w, unread);
-    click_on(&mut w, "listTab", 0);
+    // Unread, a pill while it is on, turned off: every message again.
+    click_on(&mut w, "listTab", 1);
     assert_eq!(w.state().session.view.filter, mailcraft_engine::Filter::All);
     still_selected(&mut w, unread);
 }

@@ -1,0 +1,1 @@
+- A new app icon, Harbor: three stacked envelopes on a tile that runs from cyan to deep blue.

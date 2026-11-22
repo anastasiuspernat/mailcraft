@@ -214,14 +214,17 @@ fn heading(app: &mut MailApp, ui: &mut Ui, id: Id, name: &str, height: f32, text
     if movable {
         resp.dnd_set_drag_payload(AccountDrag(id));
     }
-    if ruled {
+    // (The accounts' headings have none between them.)
+    if ruled && id == FAVORITES {
         let y = r.min.y + 9.5;
         ui.painter().line_segment([pos2(r.min.x + HIGHLIGHT_LEFT, y), pos2(r.max.x - HIGHLIGHT_RIGHT, y)], Stroke::new(1.0, t.border));
     }
     let open = !app.ui.collapsed_folders.contains(&id);
     let y = r.min.y + text_y;
     chevron(ui.painter(), pos2(r.min.x + CHEVRON_X, y + 2.0), HEADING_CHEVRON, open, if resp.hovered() { t.accent_text } else { t.text });
-    paint_clipped(ui.painter(), pos2(r.min.x + NAME_LEFT, y), (r.width() - NAME_LEFT - 8.0).max(0.0), name, regular(HEADING_SIZE), t.text);
+    // An account's name is quieter than its folders; the Favorites' heading is not.
+    let ink = if id == FAVORITES { t.text } else { t.text_dim };
+    paint_clipped(ui.painter(), pos2(r.min.x + NAME_LEFT, y), (r.width() - NAME_LEFT - 8.0).max(0.0), name, regular(HEADING_SIZE), ink);
     if resp.clicked() {
         let _ = app.execute("ui.toggleFolder", json!({"id": id}));
     }
@@ -401,7 +404,6 @@ fn folder_row(app: &mut MailApp, ui: &mut Ui, f: &Folder, depth: usize, has_chil
     let row = highlight(r);
     if selected {
         ui.painter().rect_filled(row, 6.0, t.accent_soft);
-        ui.painter().rect_filled(Rect::from_center_size(pos2(row.min.x + 1.5, row.center().y), vec2(3.0, 14.0)), 1.5, t.selection_edge);
     } else if resp.hovered() && !ui.input(|i| i.has_touch_screen()) {
         // Quieter than on the ribbon: the pane is darker, and the selected row must stay the one that stands out.
         ui.painter().rect_filled(row, 6.0, t.hover_nav);
@@ -534,7 +536,6 @@ fn gmail_row(app: &mut MailApp, ui: &mut Ui, inbox: Id, depth: usize, category: 
     let row = highlight(r);
     if selected {
         ui.painter().rect_filled(row, 6.0, t.accent_soft);
-        ui.painter().rect_filled(Rect::from_center_size(pos2(row.min.x + 1.5, row.center().y), vec2(3.0, 14.0)), 1.5, t.selection_edge);
     } else if resp.hovered() && !ui.input(|i| i.has_touch_screen()) {
         ui.painter().rect_filled(row, 6.0, t.hover_nav);
     }
