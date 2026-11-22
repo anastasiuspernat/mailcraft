@@ -17,6 +17,8 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
   is full: Send/Receive runs, for every account in All Inboxes (and the other lists of every
   account), else for the account of the folder you are in. A trackpad's two fingers pull the
   same way: scroll up past the top and lift them once the ring is full.
+- **The list's scroll bar** floats over the rows, thin, and shows only while the list moves,
+  fading a moment after it stops.
 - **Reminders and new mail** come as iPadOS notifications. Reminders still to come are handed to
   iPadOS in advance (up to 60, two weeks ahead), so they arrive on time with MailCraft closed.
   They show while MailCraft is in front too. The reminders window never opens by itself.

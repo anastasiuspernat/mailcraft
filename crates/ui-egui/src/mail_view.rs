@@ -59,9 +59,13 @@ const SCROLL_MARGIN: f32 = 5.0;
 const SCROLL_HANDLE: f32 = 9.0;
 /// Where scroll bars float over what they scroll (a Mac's): the handle, a little wider while the
 /// pointer is on it, and how far it keeps from the list's right edge.
-const OVERLAY_HANDLE: f32 = 7.0;
-const OVERLAY_HANDLE_HOVERED: f32 = 9.0;
-const OVERLAY_MARGIN: f32 = 2.0;
+const OVERLAY_HANDLE: f32 = 4.0;
+const OVERLAY_HANDLE_HOVERED: f32 = 7.0;
+const OVERLAY_MARGIN: f32 = 3.0;
+/// How long the floating bar stays after the list stops moving, and how long it then takes to go,
+/// in seconds.
+const OVERLAY_STAYS: f64 = 0.9;
+const OVERLAY_FADES: f64 = 0.35;
 /// The ends of the lane, each with an arrow in it: the handle travels between them.
 const SCROLL_END: f32 = 19.0;
 /// The time ends this far from a row's right end. What is right of it is the flag's column.
@@ -371,32 +375,78 @@ fn lane_width(app: &MailApp) -> f32 {
     if app.overlay_scroll_bars { 0.0 } else { SCROLL_LANE }
 }
 
-/// The list's scroll bar where scroll bars float over what they scroll, as a Mac's do: a slim
-/// rounded handle over the rows' right end, there while the list is scrolled or the pointer is
-/// over it and gone when it is left alone, with no lane and no arrows.
-fn overlay_scroll_style(ui: &mut Ui, t: &Tokens) {
+/// The list's scroll bar where scroll bars float over what they scroll, as a Mac's and an iPad's
+/// do: a thin rounded handle over the rows' right end, there while the list moves and a moment
+/// after (`shown`, from 0 to 1, fades it), a little wider under the pointer, with no lane and no
+/// arrows. Resting the pointer on the list doesn't bring it.
+fn overlay_scroll_style(ui: &mut Ui, t: &Tokens, shown: f32) {
     let style = ui.style_mut();
     style.spacing.scroll = egui::style::ScrollStyle {
         bar_width: OVERLAY_HANDLE_HOVERED,
         floating_width: OVERLAY_HANDLE,
         bar_inner_margin: 0.0,
         bar_outer_margin: OVERLAY_MARGIN,
-        handle_min_length: 24.0,
+        handle_min_length: 28.0,
         foreground_color: false,
         dormant_background_opacity: 0.0,
         active_background_opacity: 0.0,
         interact_background_opacity: 0.0,
-        dormant_handle_opacity: 0.0,
-        active_handle_opacity: 0.85,
-        interact_handle_opacity: 1.0,
+        dormant_handle_opacity: 0.55 * shown,
+        active_handle_opacity: 0.55 * shown,
+        interact_handle_opacity: 0.85,
         ..egui::style::ScrollStyle::floating()
     };
-    let ink = scroll_ink(t);
-    let round = egui::CornerRadius::same(5);
+    let ink = t.text;
+    let round = egui::CornerRadius::same(4);
     let widgets = &mut style.visuals.widgets;
     (widgets.inactive.bg_fill, widgets.inactive.corner_radius) = (ink, round);
-    (widgets.hovered.bg_fill, widgets.hovered.corner_radius) = (ink.lerp_to_gamma(t.text, 0.35), round);
-    (widgets.active.bg_fill, widgets.active.corner_radius) = (ink.lerp_to_gamma(t.text, 0.6), round);
+    (widgets.hovered.bg_fill, widgets.hovered.corner_radius) = (ink, round);
+    (widgets.active.bg_fill, widgets.active.corner_radius) = (ink, round);
+}
+
+/// Where the list was last scrolled to, and when it last moved (the input's time).
+#[derive(Clone, Copy)]
+struct ListMoved {
+    offset: f32,
+    at: f64,
+}
+
+fn moved_key() -> egui::Id {
+    egui::Id::unique("messageListMoved")
+}
+
+/// How much of the floating bar shows: all of it while the list moves and for a moment after,
+/// then less and less, then none.
+fn overlay_shown(ui: &Ui) -> f32 {
+    let Some(moved) = ui.data(|d| d.get_temp::<ListMoved>(moved_key())) else { return 0.0 };
+    let still = ui.input(|i| i.time) - moved.at;
+    let shown = overlay_fade(still);
+    if shown > 0.0 {
+        ui.ctx().request_repaint();
+    }
+    shown
+}
+
+/// The floating bar's share after the list has been still for `still` seconds.
+fn overlay_fade(still: f64) -> f32 {
+    if still <= OVERLAY_STAYS { 1.0 } else { (1.0 - (still - OVERLAY_STAYS) / OVERLAY_FADES).clamp(0.0, 1.0) as f32 }
+}
+
+/// Notes where the list is scrolled to: a change since the last frame is a move.
+fn overlay_moved(ui: &Ui, offset: f32) {
+    let now = ui.input(|i| i.time);
+    let was = ui.data(|d| d.get_temp::<ListMoved>(moved_key()));
+    match was {
+        // The first frame only notes where the list is: opening it is no move.
+        None => {
+            ui.data_mut(|d| d.insert_temp(moved_key(), ListMoved { offset, at: f64::NEG_INFINITY }));
+        }
+        Some(was) if (was.offset - offset).abs() > 0.5 => {
+            ui.data_mut(|d| d.insert_temp(moved_key(), ListMoved { offset, at: now }));
+            ui.ctx().request_repaint();
+        }
+        Some(_) => {}
+    }
 }
 
 /// The list's scroll bar: a slim rounded handle that is always there while the list is longer
@@ -687,7 +737,8 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
     let travel = if arrows { outer.shrink2(vec2(0.0, SCROLL_END)) } else { outer };
     let plain = ui.style().clone();
     if overlay {
-        overlay_scroll_style(ui, &t);
+        let shown = overlay_shown(ui);
+        overlay_scroll_style(ui, &t, shown);
     } else {
         scroll_style(ui, &t);
     }
@@ -767,6 +818,9 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
         }
     });
     crate::pull_refresh::track(app, ui, region, out.state.clamped_offset().y);
+    if overlay {
+        overlay_moved(ui, out.state.clamped_offset().y);
+    }
     if arrows {
         scroll_arrows(app, ui, lane, &out, row_h);
     }

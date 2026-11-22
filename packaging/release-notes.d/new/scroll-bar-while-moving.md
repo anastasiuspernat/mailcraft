@@ -1,0 +1,1 @@
+- The message list's scroll bar on a Mac and an iPad is thinner and shows only while the list moves, fading a moment after it stops, as in Apple's Mail.

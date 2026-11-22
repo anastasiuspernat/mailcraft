@@ -107,3 +107,30 @@ fn only_a_mac_floats_its_scroll_bars_by_default() {
     let app = MailApp::new(Session::at(mailcraft_engine::sample::mailbox(NOW, 0), NOW, 0), Services::default());
     assert_eq!(app.overlay_scroll_bars, cfg!(target_os = "macos"));
 }
+
+/// The floating bar shows while the list moves and a moment after, then fades away.
+#[test]
+fn the_floating_bar_shows_while_the_list_moves_then_fades() {
+    assert_eq!(overlay_fade(0.0), 1.0);
+    assert_eq!(overlay_fade(OVERLAY_STAYS), 1.0);
+    let half = overlay_fade(OVERLAY_STAYS + OVERLAY_FADES / 2.0);
+    assert!(half > 0.4 && half < 0.6, "{half}");
+    assert_eq!(overlay_fade(OVERLAY_STAYS + OVERLAY_FADES), 0.0);
+    assert_eq!(overlay_fade(f64::INFINITY), 0.0, "a list never moved shows no bar");
+
+    let mut harness = window(app(true));
+    let moved = |h: &Window| h.ctx.data(|d| d.get_temp::<ListMoved>(moved_key())).map(|m| m.at);
+    assert_eq!(moved(&harness), Some(f64::NEG_INFINITY), "opening the list is no move");
+    let rows = drawn(&mut harness);
+    let middle = rows[rows.len() / 2].1.center();
+    harness.event(egui::Event::PointerMoved(middle));
+    harness.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: vec2(0.0, -200.0),
+        modifiers: egui::Modifiers::NONE,
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Unknown,
+    });
+    harness.run_steps(10);
+    assert!(moved(&harness).is_some_and(f64::is_finite), "a scroll is a move");
+}
