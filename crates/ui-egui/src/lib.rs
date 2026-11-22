@@ -1653,6 +1653,9 @@ pub struct MailApp {
     /// Pulling the message list down with a trackpad's two fingers refreshes it, as a finger on
     /// the screen does (iPad; off by default: a computer's own mail programs have no such pull).
     pub trackpad_pull: bool,
+    /// How tall the status bar at the window's foot is: [`chrome::STATUS_BAR_H`], or less where the
+    /// host keeps it slim (iPad, where the home indicator's strip is under it).
+    pub status_bar_h: f32,
     /// Open account setup when the app starts on a mailbox nobody has set up yet (the host turns
     /// this on for an ordinary start; not for the sample or a mailbox named on the command line).
     pub offer_setup: bool,
@@ -1910,6 +1913,7 @@ impl MailApp {
             autosave: true,
             tab_strip: true,
             trackpad_pull: false,
+            status_bar_h: chrome::STATUS_BAR_H,
             offer_setup: false,
             offer_graph_switch: false,
             graph_switch_shown: Default::default(),

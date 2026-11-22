@@ -24,6 +24,9 @@ const RAIL_PITCH: f32 = 48.0;
 
 /// A folder's row.
 const ROW_H: f32 = 24.0;
+/// A heading after the first (Favorites after All Inboxes, an account after another): its row,
+/// with a little room above it.
+const LATER_HEADING_H: f32 = ROW_H + 12.0;
 /// A row of All Inboxes and the rest, and of the accounts' folders under them: roomier, for their
 /// larger names.
 pub(super) const ALL_ROW_H: f32 = 32.0;
@@ -195,6 +198,14 @@ fn chevron(painter: &Painter, c: Pos2, half: f32, open: bool, color: Color32) {
     painter.add(Shape::line(points, Stroke::new(1.5, color)));
 }
 
+/// The colour of a heading of the pane: the dim text's, fainter.
+fn heading_ink(t: &Tokens) -> egui::Color32 {
+    t.text_dim.gamma_multiply(HEADING_FAINT)
+}
+
+/// How much of the dim text's colour a heading of the pane keeps.
+const HEADING_FAINT: f32 = 0.62;
+
 /// Where a row's highlight goes.
 fn highlight(r: Rect) -> Rect {
     Rect::from_min_max(pos2(r.min.x + HIGHLIGHT_LEFT, r.min.y), pos2(r.max.x - HIGHLIGHT_RIGHT, r.max.y))
@@ -216,14 +227,14 @@ fn heading(app: &mut MailApp, ui: &mut Ui, id: Id, name: &str, height: f32, text
     }
     // (The accounts' headings have none between them.)
     if ruled && id == FAVORITES {
-        let y = r.min.y + 9.5;
+        let y = r.min.y + 4.5;
         ui.painter().line_segment([pos2(r.min.x + HIGHLIGHT_LEFT, y), pos2(r.max.x - HIGHLIGHT_RIGHT, y)], Stroke::new(1.0, t.border));
     }
     let open = !app.ui.collapsed_folders.contains(&id);
     let y = r.min.y + text_y;
-    chevron(ui.painter(), pos2(r.min.x + CHEVRON_X, y + 2.0), HEADING_CHEVRON, open, if resp.hovered() { t.accent_text } else { t.text });
-    // An account's name is quieter than its folders; the Favorites' heading is not.
-    let ink = if id == FAVORITES { t.text } else { t.text_dim };
+    // The headings (Favorites, the accounts) are quiet beside the folders under them.
+    let ink = heading_ink(&t);
+    chevron(ui.painter(), pos2(r.min.x + CHEVRON_X, y + 2.0), HEADING_CHEVRON, open, if resp.hovered() { t.accent_text } else { ink });
     paint_clipped(ui.painter(), pos2(r.min.x + NAME_LEFT, y), (r.width() - NAME_LEFT - 8.0).max(0.0), name, regular(HEADING_SIZE), ink);
     if resp.clicked() {
         let _ = app.execute("ui.toggleFolder", json!({"id": id}));
@@ -798,7 +809,7 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
                 if std::mem::take(&mut first) {
                     heading(app, ui, id, name, ROW_H, 7.5, false, movable.contains(&id))
                 } else {
-                    heading(app, ui, id, name, 2.0 * ROW_H, 34.5, true, movable.contains(&id))
+                    heading(app, ui, id, name, LATER_HEADING_H, LATER_HEADING_H - ROW_H + 10.5, true, movable.contains(&id))
                 }
             };
             // All Inboxes, VIPs, Flagged, All Drafts and All Sent first, with no heading of their
@@ -821,7 +832,7 @@ pub fn folder_pane(app: &mut MailApp, ui: &mut Ui) {
                 if movable.contains(account) {
                     let top = ui.cursor().min.y;
                     // (On the rule above a heading; at the top of the pane, just under it.)
-                    let line = if top <= pane_top { top + 1.0 } else { top + 9.5 };
+                    let line = if top <= pane_top { top + 1.0 } else { top + (LATER_HEADING_H - ROW_H) / 2.0 };
                     blocks.push(Block { account: *account, top, line });
                 }
                 if !head(app, ui, *account, if name.is_empty() { tl!("Mailbox") } else { name }) {

@@ -376,6 +376,9 @@ pub(crate) const ACTIONS: [(&str, &str, &str); 4] = [
     ("delete", "Delete", "mail.delete"),
 ];
 
+/// The room between the sender's name and their address in a message's header.
+const NAME_ADDRESS_GAP: f32 = 7.0;
+
 /// The widths the sender's name and address get in `room` (what is left of the row after the
 /// tag), given the widths they would like. Both fit when they can; else the address is
 /// shortened first, down to 60% of the room, and the name gets the rest, shortened in turn
@@ -450,7 +453,10 @@ fn header(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Place, pictur
                     // From outside the organisation: a quiet tag after the address, which
                     // keeps its room.
                     let external = warnings::external(app, m);
-                    let tag_w = if external { warnings::external_tag_width(ui, &t) } else { 0.0 };
+                    // And the smart Inbox's part (Promotions, Updates…), as the list shows it.
+                    let part = crate::ai_tabs::reading_chip(&app.session, m);
+                    let part_w = part.map_or(0.0, |c| crate::ai_tabs::chip_width(ui, c) + 6.0);
+                    let tag_w = if external { warnings::external_tag_width(ui, &t) } else { 0.0 } + part_w;
                     let address_text = format!("<{}>", m.from.email);
                     let name_text = m.from.display();
                     let name_nat = ui.painter().layout_no_wrap(name_text.to_string(), semibold(13.0), t.text).size().x;
@@ -459,7 +465,8 @@ fn header(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Place, pictur
                     } else {
                         ui.painter().layout_no_wrap(address_text.clone(), regular(11.5), t.text_dim).size().x
                     };
-                    let gap = ui.spacing().item_spacing.x;
+                    // The name and its address apart, as words are (#630 left them touching).
+                    let gap = if m.from.name.is_empty() { 0.0 } else { NAME_ADDRESS_GAP };
                     let (name_w, address_w) = header_widths(room - tag_w - gap, name_nat, address_nat);
                     let looks_like_address = mailcraft_model::confusables::as_seen(&m.from.name, 1_000).contains('@');
                     let name =
@@ -469,6 +476,7 @@ fn header(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Place, pictur
                         fields.add(ui, select::Field::Sender, egui::Label::new(name).truncate());
                     });
                     if !m.from.name.is_empty() {
+                        ui.add_space(gap);
                         let address = egui::RichText::new(address_text).font(regular(11.5)).color(t.text_dim);
                         ui.scope(|ui| {
                             ui.set_max_width(address_w);
@@ -480,6 +488,13 @@ fn header(app: &mut MailApp, ui: &mut Ui, m: &Arc<Message>, place: Place, pictur
                         let tag = warnings::external_tag(ui, &t);
                         if place == Place::Pane {
                             app.hit.add("externalTag", m.id, tag.rect);
+                        }
+                    }
+                    if let Some(c) = part {
+                        ui.add_space(6.0);
+                        let at = crate::ai_tabs::paint_chip(ui, c, &t);
+                        if place == Place::Pane {
+                            app.hit.add("readingSmartCategory", m.id, at);
                         }
                     }
                 };

@@ -66,7 +66,7 @@ pub(crate) fn gap(app: &MailApp, ui: &mut Ui, t: &Tokens) -> f32 {
         return 0.0;
     }
     let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), egui::Sense::hover());
-    ui.painter().rect_filled(r, 0.0, t.surface);
+    ui.painter().rect_filled(r, 0.0, t.list);
     let size = 18.0;
     let at = Rect::from_center_size(pos2(r.center().x, r.max.y - SPIN_GAP / 2.0), vec2(size, size));
     if p.since.is_some() {

@@ -34,9 +34,10 @@ const SENDER_NAME: f32 = SENDER_TEXT - 4.0 / 3.0;
 const LIST_TEXT: f32 = 11.0;
 /// How the list is arranged, in its header: 9 pt.
 const SORT_TEXT: f32 = 12.0;
-/// The list's header (the filter's tabs, the arrangement). Its last pixel row is the line under
-/// the tab in use.
-const HEADER_H: f32 = 48.0;
+/// The list's header: the Unread switch, the arrangement and its arrow, on one line.
+const HEADER_H: f32 = 36.0;
+/// The middle of the header's line (the switch, the arrangement, the arrow), from its top.
+const HEADER_MID: f32 = 21.0;
 /// From one tab in the header to the next.
 const TAB_GAP: f32 = 14.0;
 /// The least of a tab's name that is worth showing.
@@ -133,10 +134,10 @@ pub fn show(app: &mut MailApp, ui: &mut Ui) {
     let pane = app.session.view.reading_pane;
     // The list takes the whole width when the reading pane is off, unless a message is being written.
     if pane == Pane::Off && !composing {
-        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.surface)).show(ui, |ui| list(app, ui));
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(t.list)).show(ui, |ui| list(app, ui));
         return;
     }
-    let frame = egui::Frame::NONE.fill(t.surface).stroke(Stroke::new(1.0, t.border));
+    let frame = egui::Frame::NONE.fill(t.list).stroke(Stroke::new(1.0, t.border));
     if pane == Pane::Bottom {
         let h = (ui.available_height() * 0.42).clamp(140.0, 520.0);
         egui::Panel::top("message_list")
@@ -266,7 +267,7 @@ fn list_header(app: &mut MailApp, ui: &mut Ui) {
     // The arrow: up while the list starts where its arrangement naturally starts (the newest,
     // A, the largest), down once it is turned over.
     let (sort, descending) = (app.session.view.sort, app.session.view.sort_descending);
-    let arrow = Rect::from_center_size(pos2(rows_end - 11.0, r.min.y + 33.0), vec2(20.0, 22.0));
+    let arrow = Rect::from_center_size(pos2(rows_end - 11.0, r.min.y + HEADER_MID), vec2(20.0, 22.0));
     let arrow_resp = ui.interact(arrow, ui.scope_id().with("list_direction"), Sense::click()).on_hover_text(direction_label(sort, descending));
     app.hit.add("listSort", 1, arrow);
     if arrow_resp.hovered() {
@@ -281,14 +282,14 @@ fn list_header(app: &mut MailApp, ui: &mut Ui) {
     let label = sort_label(sort);
     let label_w = ui.ctx().fonts_mut(|f| f.layout_no_wrap(label.to_string(), regular(SORT_TEXT), t.text).size().x);
     let label_end = rows_end - 46.0;
-    let sr = Rect::from_min_max(pos2(label_end - label_w - 6.0, r.min.y + 22.0), pos2(rows_end - 25.0, r.min.y + 44.0));
+    let sr = Rect::from_min_max(pos2(label_end - label_w - 6.0, r.min.y + HEADER_MID - 11.0), pos2(rows_end - 25.0, r.min.y + HEADER_MID + 11.0));
     let sresp = ui.interact(sr, ui.scope_id().with("list_sort"), Sense::click());
     app.hit.add("listSort", 0, sr);
     if sresp.hovered() {
         ui.painter().rect_filled(sr, 4.0, t.hover);
     }
-    ui.painter().text(pos2(label_end, r.min.y + 33.5), Align2::RIGHT_CENTER, label, regular(SORT_TEXT), t.text);
-    let chevron = pos2(rows_end - 36.0, r.min.y + 34.0);
+    ui.painter().text(pos2(label_end, r.min.y + HEADER_MID + 0.5), Align2::RIGHT_CENTER, label, regular(SORT_TEXT), t.text);
+    let chevron = pos2(rows_end - 36.0, r.min.y + HEADER_MID + 1.0);
     let line = Stroke::new(1.2, t.text);
     ui.painter().line(vec![chevron + vec2(-4.5, -2.5), chevron + vec2(0.0, 2.5), chevron + vec2(4.5, -2.5)], line);
     let filter = app.session.view.filter;
@@ -326,7 +327,7 @@ fn list_header(app: &mut MailApp, ui: &mut Ui) {
         tabs.retain(|(f, ..)| *f == filter);
     }
     let over = (need(&tabs) - room).max(0.0);
-    let mid = r.min.y + 33.0;
+    let mid = r.min.y + HEADER_MID;
     for (f, n, w) in tabs {
         let on = f == filter;
         let w = (w - over).max(0.0);
@@ -1152,7 +1153,7 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
     let strong = selected && focus;
     if let (true, Some(_)) = (selected, fill) {
         let fill = if strong { crate::theme::under_white(t.selection_edge) } else { t.selection };
-        p.rect_filled(card, 6.0, if flag_tint && !strong { fill.gamma_multiply(0.72) } else { fill });
+        gradient_card(p, card, 6.0, if flag_tint && !strong { fill.gamma_multiply(0.72) } else { fill });
     }
     if strong {
         let white = Color32::WHITE;
@@ -1201,7 +1202,8 @@ fn message_row(app: &mut MailApp, ui: &mut Ui, row: &Row, rect: Rect, drawn: &Dr
         m.from.display().to_string()
     };
     // The picture (or the initials) of who wrote it, or of who it went to.
-    let pictured = app.ui.sender_images && !one;
+    // (A Priority row has a smaller one of its own.)
+    let pictured = app.ui.sender_images && !one && !compact;
     // A message under its open conversation starts a step further in (#503).
     let text_left = TEXT_LEFT + if row.under.is_some() { UNDER_INDENT } else { 0.0 };
     if pictured {
@@ -1531,6 +1533,11 @@ fn priority_text(
     t: &Tokens,
     selected: bool,
 ) {
+    // The sender's small picture (or initials), as by their name in the reading pane.
+    let center = pos2(left + PRIORITY_AVATAR, rect.center().y - 0.5);
+    let who_address = if row_outgoing(app, row, m) { m.to.first().unwrap_or(&m.from) } else { &m.from };
+    crate::sender_images::avatar(app, ui, center, PRIORITY_AVATAR, m, who_address);
+    let left = left + 2.0 * PRIORITY_AVATAR + PRIORITY_AVATAR_GAP;
     let p = ui.painter();
     let end = rect.max.x - TIME_RIGHT;
     if end - left < 20.0 {
@@ -1567,7 +1574,7 @@ fn priority_text(
     app.hit.add("priorityText", row.id, Rect::from_min_max(pos2(left, top), pos2(end, top + 2.0 * PRIORITY_PITCH)));
     // The quick actions sit on a patch of the row's own shade, over the text's end.
     if let Some(at) = quick {
-        let shade = if selected { t.selection } else { t.surface };
+        let shade = if selected { t.selection } else { t.list };
         p.rect_filled(at.expand(2.0), 4.0, shade);
         if !selected {
             p.rect_filled(at.expand(2.0), 4.0, t.hover_subtle);
@@ -1575,8 +1582,71 @@ fn priority_text(
     }
 }
 
+/// The picture before a Priority row's text: its radius, and the room after it.
+const PRIORITY_AVATAR: f32 = 10.0;
+const PRIORITY_AVATAR_GAP: f32 = 9.0;
+
+/// Whether a row's message is one the owner sent (Sent Items, Drafts, Outbox), so that who it went
+/// to is shown rather than who wrote it.
+fn row_outgoing(app: &MailApp, row: &Row, m: &Message) -> bool {
+    let outgoing_folder =
+        |folder| app.session.mailbox.folder(folder).is_some_and(|f| matches!(f.kind, FolderKind::Sent | FolderKind::Drafts | FolderKind::Outbox));
+    outgoing_folder(m.folder) && (row.under.is_none() || outgoing_folder(app.session.view.folder))
+}
+
 /// The room a Priority row keeps for the envelope between the sender and the summary.
 const ENVELOPE_ROOM: f32 = 20.0;
+
+/// A selected row's card: `color`, a touch lighter at its top and a touch deeper at its bottom,
+/// with rounded corners.
+fn gradient_card(p: &egui::Painter, rect: Rect, radius: f32, color: Color32) {
+    let (top, bottom) = selection_shades(color);
+    let outline = rounded_outline(rect, radius);
+    let mut mesh = egui::Mesh::default();
+    let shade = |y: f32| {
+        let k = if rect.height() > 0.0 { ((y - rect.min.y) / rect.height()).clamp(0.0, 1.0) } else { 0.0 };
+        top.lerp_to_gamma(bottom, k)
+    };
+    mesh.colored_vertex(rect.center(), shade(rect.center().y));
+    for at in &outline {
+        mesh.colored_vertex(*at, shade(at.y));
+    }
+    let n = outline.len() as u32;
+    for i in 0..n {
+        mesh.add_triangle(0, 1 + i, 1 + (i + 1) % n);
+    }
+    p.add(egui::Shape::mesh(mesh));
+    // A hairline round it in its middle shade smooths the edge.
+    p.rect_stroke(rect, radius, Stroke::new(0.75, shade(rect.center().y)), egui::StrokeKind::Inside);
+}
+
+/// The shades at the top and the bottom of a selected row's card of `color`.
+fn selection_shades(color: Color32) -> (Color32, Color32) {
+    let a = color.a();
+    let lighter = color.lerp_to_gamma(Color32::from_rgba_unmultiplied(255, 255, 255, a), 0.10);
+    let deeper = color.lerp_to_gamma(Color32::from_rgba_unmultiplied(0, 0, 0, a), 0.06);
+    (lighter, deeper)
+}
+
+/// The points round a rounded rectangle, clockwise from its top-left corner's start.
+fn rounded_outline(rect: Rect, radius: f32) -> Vec<egui::Pos2> {
+    let r = radius.clamp(0.0, rect.width().min(rect.height()) / 2.0);
+    let corners = [
+        (pos2(rect.max.x - r, rect.min.y + r), -std::f32::consts::FRAC_PI_2),
+        (pos2(rect.max.x - r, rect.max.y - r), 0.0),
+        (pos2(rect.min.x + r, rect.max.y - r), std::f32::consts::FRAC_PI_2),
+        (pos2(rect.min.x + r, rect.min.y + r), std::f32::consts::PI),
+    ];
+    const STEPS: usize = 6;
+    let mut out = Vec::with_capacity(4 * (STEPS + 1));
+    for (centre, start) in corners {
+        for k in 0..=STEPS {
+            let a = start + std::f32::consts::FRAC_PI_2 * k as f32 / STEPS as f32;
+            out.push(centre + vec2(a.cos(), a.sin()) * r);
+        }
+    }
+    out
+}
 
 fn clicks(app: &mut MailApp, ui: &Ui, resp: &egui::Response, row: &Row, m: &Message, selected: bool) {
     let (id, copy) = (row.id, row.copy);

@@ -261,6 +261,34 @@ pub(crate) fn chip(s: &mailcraft_engine::Session, m: &mailcraft_model::Message) 
     m.insight.as_deref().and_then(|i| i.category).filter(|c| *c != InboxCategory::Primary)
 }
 
+/// The part a message wears as a tag over it in the reading pane, whatever the list shows: for
+/// sorted mail while the smart Inbox is on; Primary goes without one, as in the list.
+pub(crate) fn reading_chip(s: &mailcraft_engine::Session, m: &mailcraft_model::Message) -> Option<InboxCategory> {
+    if !s.prefs.ai.enabled || !mailcraft_engine::ai::sorts(s, m) {
+        return None;
+    }
+    m.insight.as_deref().and_then(|i| i.category).filter(|c| *c != InboxCategory::Primary)
+}
+
+/// A part's tag, as a row of the list and the reading pane show it: its name, small, in a frame.
+/// Where it was drawn.
+pub(crate) fn paint_chip(ui: &mut Ui, c: InboxCategory, t: &Tokens) -> Rect {
+    let label = ui.painter().layout_no_wrap(name(c).to_string(), regular(CHIP_TEXT), t.text_dim);
+    let (r, _) = ui.allocate_exact_size(vec2(label.size().x + 8.0, CHIP_H), Sense::hover());
+    ui.painter().rect_stroke(r, 3.0, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
+    ui.painter().galley(r.center() - label.size() / 2.0, label, t.text_dim);
+    r
+}
+
+/// How wide [`paint_chip`] draws a part's tag.
+pub(crate) fn chip_width(ui: &Ui, c: InboxCategory) -> f32 {
+    ui.painter().layout_no_wrap(name(c).to_string(), regular(CHIP_TEXT), egui::Color32::WHITE).size().x + 8.0
+}
+
+const CHIP_TEXT: f32 = 10.5;
+/// How tall [`paint_chip`] draws a part's tag: as tall as the reading pane's External tag.
+const CHIP_H: f32 = 18.0;
+
 /// What the list says under the search box of search by meaning, while a search is made: how
 /// many it found by meaning, that the search's meaning is on its way, or how much mail is left to
 /// read for it.

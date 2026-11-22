@@ -157,6 +157,8 @@ pub struct Tokens {
     pub panel: Color32,
     /// The message list, the reading pane, calendar cells: where content sits.
     pub surface: Color32,
+    /// The message list's own background: the surface's in light, black in dark.
+    pub list: Color32,
     pub border: Color32,
     pub border_strong: Color32,
     pub text: Color32,
@@ -295,6 +297,7 @@ impl Tokens {
             canvas: window,
             panel,
             surface,
+            list: surface,
             border,
             border_strong: c(0xB8, 0xC0, 0xCD),
             text,
@@ -392,6 +395,7 @@ impl Tokens {
             canvas: window,
             panel,
             surface,
+            list: Color32::BLACK,
             border,
             border_strong: c(0x4A, 0x55, 0x68),
             text,

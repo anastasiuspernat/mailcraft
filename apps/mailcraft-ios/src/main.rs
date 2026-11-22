@@ -135,6 +135,10 @@ mod ios {
     const PREFS_EVERY: f64 = 2.0;
     /// How near a touch must land to a widget to count for it (points).
     const TOUCH_REACH: f32 = 14.0;
+    /// The status bar at the window's foot, slimmer than a computer's.
+    const STATUS_BAR_H: f32 = 22.0;
+    /// How much of the home indicator's strip the window takes, for the status bar.
+    const HOME_STRIP_SHARE: f32 = 0.5;
 
     /// The thread that writes the mailbox file, as on the desktop.
     fn saver(ctx: &egui::Context, path: &Path) -> Option<Box<dyn mailcraft_engine::io::BackgroundSave>> {
@@ -229,7 +233,10 @@ mod ios {
             // the safe area, with the window's own colour behind both.
             let canvas = mailcraft_ui_egui::theme::Tokens::get(ui.ctx()).canvas;
             ui.painter().rect_filled(ui.ctx().viewport_rect(), 0.0, canvas);
-            let safe = ui.ctx().content_rect();
+            let mut safe = ui.ctx().content_rect();
+            // The status bar sits half in the home indicator's strip, slim, so the two don't read
+            // as one thick bar (its words keep clear of the indicator, which is in the middle).
+            safe.max.y += (ui.ctx().viewport_rect().max.y - safe.max.y).max(0.0) * HOME_STRIP_SHARE;
             ui.scope_builder(egui::UiBuilder::new().max_rect(safe), |ui| self.app.ui(ui));
             // What was copied goes on the iPad's pasteboard.
             crate::menu::copy_out(ui.ctx());
@@ -399,6 +406,7 @@ mod ios {
                 app.tab_strip = false;
                 // A trackpad's two fingers pull the list down to refresh it, as a finger does.
                 app.trackpad_pull = true;
+                app.status_bar_h = STATUS_BAR_H;
                 if let Some(path) = app.session.path.clone() {
                     app.services.saver = saver(&cc.egui_ctx, &path);
                 }

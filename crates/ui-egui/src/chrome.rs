@@ -430,7 +430,7 @@ pub(crate) fn sync_shown(app: &MailApp) -> SyncShown {
 pub fn status_bar(app: &mut MailApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("status")
-        .exact_size(STATUS_BAR_H)
+        .exact_size(app.status_bar_h)
         // No line around it: the bar is the window's own colour, and the panes above it are not.
         .show_separator_line(false)
         .frame(egui::Frame::NONE.fill(t.status_bar).inner_margin(egui::Margin { left: 12, right: 12, top: 0, bottom: 0 }))

@@ -81,3 +81,24 @@ fn the_tabs_keep_to_one_line_that_scrolls_in_a_narrow_list() {
     harness.run_steps(4);
     assert_eq!(harness.state().session.view.inbox_category, None);
 }
+
+/// The message being read wears its part's tag, as its row does in All Mail, whatever tab the list
+/// shows; Primary mail wears none.
+#[test]
+fn the_message_being_read_wears_its_part() {
+    let mut harness = smart_window(1280.0);
+    let app = harness.state_mut();
+    let inbox = app.session.view.folder;
+    let mut ids = app.session.mailbox.messages.values().filter(|m| m.folder == inbox).map(|m| m.id);
+    let (promo, primary) = (ids.next().unwrap(), ids.next().unwrap());
+    app.execute("ai.setCategory", json!({"ids": [promo], "category": "promotions"})).unwrap();
+    app.execute("ai.setCategory", json!({"ids": [primary], "category": "primary"})).unwrap();
+    app.execute("view.inboxCategory", json!({"category": "promotions"})).unwrap();
+    app.execute("mail.select", json!({"id": promo})).unwrap();
+    harness.run_steps(4);
+    assert!(harness.state().hit.rect("readingSmartCategory", promo).is_some(), "Promotions in its own tab");
+    harness.state_mut().execute("view.inboxCategory", json!({"category": "primary"})).unwrap();
+    harness.state_mut().execute("mail.select", json!({"id": primary})).unwrap();
+    harness.run_steps(4);
+    assert!(harness.state().hit.rect("readingSmartCategory", primary).is_none(), "Primary wears none");
+}

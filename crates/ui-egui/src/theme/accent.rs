@@ -177,6 +177,7 @@ impl Tokens {
             self.panel = panel;
             self.lane = panel;
             self.surface = surface;
+            self.list = if self.dark { Color32::BLACK } else { surface };
             self.input = surface;
             self.ribbon = ribbon;
             self.menu = ribbon;
@@ -234,6 +235,7 @@ impl Tokens {
             self.lane = window;
             self.panel = panel;
             self.surface = surface;
+            self.list = if self.dark { Color32::BLACK } else { surface };
             self.input = surface;
             self.ribbon = surface;
             self.menu = surface;
