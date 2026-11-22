@@ -1,0 +1,1 @@
+- iPad: pull the message list down to refresh it, as in Apple's Mail: every account in All Inboxes, else the account of the folder you are in.

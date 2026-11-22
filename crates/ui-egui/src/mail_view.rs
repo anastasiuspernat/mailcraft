@@ -601,6 +601,10 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
         return;
     }
     if rows.is_empty() {
+        // An empty list is pulled down as a full one is.
+        let region = ui.available_rect_before_wrap();
+        crate::pull_refresh::gap(app, ui, &t);
+        crate::pull_refresh::track(app, ui, region, 0.0);
         let r = ui.available_rect_before_wrap();
         let msg = if searching {
             tl!("Nothing matches the search.")
@@ -662,6 +666,9 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
     let focus = app.session.sel.focus_in(&rows).and_then(|i| rows.get(i)).map(|r| (r.id, r.copy));
     // What is drawn selected (#503).
     let drawn = drawn_selection(app, &rows);
+    // Pull to refresh: the gap the finger opens above the rows.
+    let region = ui.available_rect_before_wrap();
+    crate::pull_refresh::gap(app, ui, &t);
     let outer = ui.available_rect_before_wrap();
     // Page Up and Page Down move by the rows that fit (#426).
     app.list_page_rows = ((outer.height() / row_h).floor() as usize).max(1);
@@ -756,6 +763,7 @@ fn list(app: &mut MailApp, ui: &mut Ui) {
             server_rows::show(app, ui, &local, origin.x, origin.y + rows_end, width, server_h, viewport.translate(origin.to_vec2()));
         }
     });
+    crate::pull_refresh::track(app, ui, region, out.state.clamped_offset().y);
     if arrows {
         scroll_arrows(app, ui, lane, &out, row_h);
     }

@@ -286,3 +286,29 @@ fn primary_and_all_mail_say_mail_is_being_read_until_it_is() {
     answer(&mut s, "primary", &[], None);
     assert!(!crate::ai::reading_mail(&s), "all read");
 }
+
+#[test]
+fn unread_mail_is_read_first_and_mail_already_read_doesnt_keep_the_box_waiting() {
+    let (mut s, inbox) = setup();
+    let seen = add(&mut s, inbox, "Ada", "ada@example.org", "Lunch some day", NOW - 60);
+    s.mailbox.message_mut(seen).unwrap().read = true;
+    let fresh = add(&mut s, inbox, "Ben", "ben@example.org", "Meeting moved to today", NOW - 3_600);
+    s.ai.host.available = true;
+    // The older unread message comes before the newer one already read.
+    let r = s.run("ai.request", &json!({"max": 1})).unwrap();
+    let jobs: Vec<Job> = serde_json::from_value(r["jobs"].clone()).unwrap();
+    assert_eq!(jobs.iter().map(|j| j.id).collect::<Vec<_>>(), vec![fresh]);
+    assert!(crate::ai::reading_mail(&s));
+    // Its answer in, only mail already read is left: the Priority box is settled.
+    s.ai.in_flight.clear();
+    s.mailbox.message_mut(fresh).unwrap().insight = Some(Box::new(mailcraft_model::Insight {
+        category: Some(mailcraft_model::InboxCategory::Primary),
+        priority: Some(false),
+        ..Default::default()
+    }));
+    let r = s.run("ai.request", &json!({"max": 1})).unwrap();
+    let jobs: Vec<Job> = serde_json::from_value(r["jobs"].clone()).unwrap();
+    assert_eq!(jobs.iter().map(|j| j.id).collect::<Vec<_>>(), vec![seen]);
+    assert_eq!(s.ai.backlog, 1);
+    assert!(!crate::ai::reading_mail(&s), "only mail already read is being sorted");
+}

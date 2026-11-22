@@ -1371,6 +1371,8 @@ fn tokens_from(answer: &Answer, earlier_refresh: &str, now: i64, secrets: &[&str
         // A careless server may repeat what it was sent; that is taken out before the text is
         // shortened, as a secret cut in half would no longer be recognised.
         let hide = |text: &str| secrets.iter().fold(text.to_string(), |text, secret| crate::scrub(&text, secret));
+        // For whoever has to find out why a sign-in ended: the code alone, never the words.
+        log::info!("the sign-in server said no: \"{}\" (status {})", shown(&http::tidy(&hide(text("error")))), answer.status);
         // Microsoft lists its own numbers for the refusal beside the description that names them.
         let listed = json.as_ref().and_then(|json| json.get("error_codes")).and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default();
         let codes: Vec<u64> = listed.iter().take(MAX_CODES).filter_map(Value::as_u64).collect();
@@ -1591,6 +1593,7 @@ fn judge(request: &[u8], state: &str) -> (&'static Page, Option<Result<String, R
     }
     let code = field("code");
     if code.is_empty() || !usable(code) {
+        log::info!("the sign-in page came back without a usable code");
         let broken = ProtoError::Protocol("the sign-in page came back without a code".into());
         return (&FAILED, Some(Err(NetError::Proto(broken).into())));
     }
@@ -1693,7 +1696,10 @@ impl Redirect {
     /// Listen on a free port of 127.0.0.1 and, where there is IPv6, on the same port of `::1`:
     /// a browser may take `localhost` to be either.
     fn listen() -> Result<Redirect, NetError> {
-        let failed = || NetError::Config("couldn't open a port on this computer for the sign-in to come back to".into());
+        let failed = || {
+            log::info!("no loopback port could be opened for the sign-in");
+            NetError::Config("couldn't open a port on this computer for the sign-in to come back to".into())
+        };
         for attempt in 1..=MAX_PORT_TRIES {
             let v4 = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).map_err(|_| failed())?;
             let port = v4.local_addr().map_err(|_| failed())?.port();

@@ -13,6 +13,9 @@ iPadOS: the same engine, the same mailbox file and the same interface, drawn wit
   Microsoft and Google sign in on their own page, shown in Apple's sign-in sheet over MailCraft.
 - **Touch**: a swipe scrolls the lists, a tap selects, a long press opens a message's menu (Move
   to, Flag, Delete and the rest). Nothing reacts to a finger passing by.
+- **Pull to refresh**: with the message list at its top, draw it down and let go once the ring
+  is full: Send/Receive runs, for every account in All Inboxes (and the other lists of every
+  account), else for the account of the folder you are in.
 - **Reminders and new mail** come as iPadOS notifications. Reminders still to come are handed to
   iPadOS in advance (up to 60, two weeks ahead), so they arrive on time with MailCraft closed.
   They show while MailCraft is in front too. The reminders window never opens by itself.

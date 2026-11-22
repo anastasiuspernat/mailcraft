@@ -1,0 +1,2 @@
+- The smart Inbox reads unread mail first, as only unread mail can be a priority, and the Priority box stops saying "Reading mail…" as soon as that is done, instead of waiting for every message of the last 30 days.
+- iPad: when a Google sign-in fails after its page, MailCraft's log says at which step (only the step, never a token).

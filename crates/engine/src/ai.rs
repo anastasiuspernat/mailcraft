@@ -135,6 +135,9 @@ pub struct AiState {
     pub host: HostStatus,
     /// Messages left to sort and summarise in the backfill window, as last counted.
     pub backlog: usize,
+    /// Of those, unread ones: only unread mail can be a priority, so the Priority box is
+    /// settled once these are read.
+    pub unread_backlog: usize,
     /// Search by meaning: the words of a search whose meaning is to be asked for next.
     pub query_wanted: Option<String>,
     /// The searches whose meaning was asked for, newest first (at most [`MAX_QUERIES`]).
@@ -283,8 +286,10 @@ pub fn all_mail_in_view(s: &Session) -> bool {
 /// then, saying "Reading mail…" while nothing is in it yet. Not while the model can't run.
 pub fn reading_mail(s: &Session) -> bool {
     let shows = in_view(s) == Some(InboxCategory::Primary) || all_mail_in_view(s);
-    let sorting = s.ai.in_flight.iter().any(|(_, kind)| matches!(kind, JobKind::Classify | JobKind::Summarize));
-    shows && s.ai.host.available && s.ai.host.error.is_empty() && (sorting || s.ai.backlog > 0)
+    // Only unread mail can be a priority: reading mail already read doesn't change the box.
+    let unread = |id: &Id| s.mailbox.message(*id).is_some_and(|m| !m.read);
+    let sorting = s.ai.in_flight.iter().any(|(id, kind)| matches!(kind, JobKind::Classify | JobKind::Summarize) && unread(id));
+    shows && s.ai.host.available && s.ai.host.error.is_empty() && (sorting || s.ai.unread_backlog > 0)
 }
 
 /// Whether the list in view is of an Inbox, or of All Inboxes ([`crate::all`]): what the smart
@@ -570,17 +575,29 @@ fn sort_jobs(s: &mut Session, max: usize, today: mailcraft_model::time::Date, jo
     let now = s.now();
     let since = now.saturating_sub(i64::from(s.prefs.ai.backfill_days).saturating_mul(86_400));
     let enabled_at = s.prefs.ai.enabled_at;
-    let mut todo: Vec<(i64, Id)> =
-        s.mailbox.messages.values().filter(|m| m.received >= since && needs_work(s, m)).filter(|m| sorts(s, m)).map(|m| (m.received, m.id)).collect();
+    // Unread mail first, newest first: only unread mail can be a priority, so the Priority box
+    // is settled before mail already read is sorted.
+    let mut todo: Vec<(bool, i64, Id)> = s
+        .mailbox
+        .messages
+        .values()
+        .filter(|m| m.received >= since && needs_work(s, m))
+        .filter(|m| sorts(s, m))
+        .map(|m| (!m.read, m.received, m.id))
+        .collect();
     todo.sort_by(|a, b| b.cmp(a));
     s.ai.backlog = todo.len();
-    for (received, id) in todo {
+    s.ai.unread_backlog = todo.iter().filter(|(unread, _, _)| *unread).count();
+    for (unread, received, id) in todo {
         if jobs.len() >= max {
             break;
         }
         let Some(m) = s.mailbox.message(id).cloned() else { continue };
         if place_without_model(s, &m) {
             s.ai.backlog = s.ai.backlog.saturating_sub(1);
+            if unread {
+                s.ai.unread_backlog = s.ai.unread_backlog.saturating_sub(1);
+            }
             continue;
         }
         let kind = if wants_summary(s, &m) { JobKind::Summarize } else { JobKind::Classify };
@@ -828,6 +845,9 @@ pub fn apply(s: &mut Session, results: Vec<JobResult>) -> Applied {
                 done.kept += 1;
                 // One less to sort, as the window says ("Sorting your Inbox… n left").
                 s.ai.backlog = s.ai.backlog.saturating_sub(1);
+                if unread {
+                    s.ai.unread_backlog = s.ai.unread_backlog.saturating_sub(1);
+                }
             }
         }
     }

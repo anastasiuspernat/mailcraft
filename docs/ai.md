@@ -31,8 +31,9 @@ summaries**.
   asking you to act soon, a changed meeting, a trip or a delivery today) comes first, in a framed
   box under **Priority**. Mail you have already read is never asked about. It stays there to the end of its due day, or for two days when it has none. With more than four,
   three show and a line such as "5 more from Priya, Jonas and Lin" opens the rest. The box is at
-  the top of **All Mail** too. While the model is still reading your mail, the box shows with a
-  soft band of light rising through it, and says **Reading mail…** until something is in it. Right-click › **Not a Priority** takes a message out for good;
+  the top of **All Mail** too. Unread mail is read first, as only unread mail can be a priority; while the model is still reading
+  it, the box shows with a soft band of light rising through it, and says **Reading mail…** until
+  something is in it. Mail you have already read is sorted after that, without the band. Right-click › **Not a Priority** takes a message out for good;
   **Mark as Priority** puts one in. Right-click › **Always Show Sender in Priority** makes the
   sender a VIP: their unread mail in Primary is always in the box, however old, until you read
   it or say Not a Priority.
