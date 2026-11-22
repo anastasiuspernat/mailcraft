@@ -7,6 +7,9 @@
 //! for a moment at least, and while that run goes on (for a short while at most); the sync
 //! panel says the rest.
 //!
+//! On iPad a trackpad's two fingers pull too: scrolling up past the list's top draws it down the
+//! same way, and lifting them far enough down refreshes (the coasting after they lift doesn't).
+//!
 //! Nothing here on a computer with a mouse: there, drawing a row down drags the message.
 
 use egui::{Rect, Ui, pos2, vec2};
@@ -29,7 +32,9 @@ const SPIN_MOST: f64 = 10.0;
 struct Pull {
     /// Where the finger came down, with the list at its top.
     from: Option<f32>,
-    /// How far it has drawn the list down.
+    /// A trackpad's fingers took hold of the list at its top (iPad).
+    wheel: bool,
+    /// How far the finger, or the fingers, have drawn the list down.
     down: f32,
     /// When a refresh was asked for (the input's time).
     since: Option<f64>,
@@ -92,37 +97,86 @@ fn pulled(down: f32) -> f32 {
 pub(crate) fn track(app: &mut MailApp, ui: &Ui, region: Rect, offset: f32) {
     let touch = ui.input(|i| i.has_touch_screen());
     let mut p = pull(ui);
-    let before = (p.from, p.down, p.since);
+    let before = (p.from, p.wheel, p.down, p.since);
     let (pressed, down, released, origin, at) = ui.input(|i| {
         (i.pointer.primary_pressed(), i.pointer.primary_down(), i.pointer.primary_released(), i.pointer.press_origin(), i.pointer.latest_pos())
     });
+    let top = offset <= 0.5;
+    let mut let_go = false;
     if !touch {
-        p = Pull { since: p.since, ..Pull::default() };
+        p.from = None;
     } else {
-        if pressed && p.since.is_none() && offset <= 0.5 && origin.is_some_and(|o| region.contains(o)) {
+        if pressed && p.since.is_none() && top && origin.is_some_and(|o| region.contains(o)) {
             p.from = origin.map(|o| o.y);
+            p.wheel = false;
             p.down = 0.0;
         }
         if let Some(from) = p.from {
-            if down && offset <= 0.5 {
+            if down && top {
                 p.down = at.map_or(p.down, |at| (at.y - from).max(0.0));
-            } else if released || !down {
-                if p.down >= PULL_TO_REFRESH && refresh(app) {
-                    p.since = Some(ui.input(|i| i.time));
-                }
-                p.from = None;
-                p.down = 0.0;
             } else {
-                // The list scrolled instead: no pull.
+                // Let go, or the list scrolled instead (no pull then).
+                let_go = released || !down;
                 p.from = None;
-                p.down = 0.0;
             }
         }
     }
-    if (p.from, p.down, p.since) != before {
+    if app.trackpad_pull {
+        let over = at.is_some_and(|at| region.contains(at));
+        for (phase, dy) in trackpad(ui) {
+            match phase {
+                egui::TouchPhase::Start => {
+                    if p.since.is_none() && p.from.is_none() && top && over {
+                        p.wheel = true;
+                        p.down = 0.0;
+                    }
+                }
+                egui::TouchPhase::Move if p.wheel => {
+                    p.down = pulled_on(p.down, dy, top);
+                }
+                egui::TouchPhase::End | egui::TouchPhase::Cancel if p.wheel => {
+                    let_go = phase == egui::TouchPhase::End;
+                    p.wheel = false;
+                }
+                _ => {}
+            }
+        }
+    } else {
+        p.wheel = false;
+    }
+    if p.from.is_none() && !p.wheel {
+        if let_go && p.down >= PULL_TO_REFRESH && refresh(app) {
+            p.since = Some(ui.input(|i| i.time));
+        }
+        p.down = 0.0;
+    }
+    if (p.from, p.wheel, p.down, p.since) != before {
         ui.data_mut(|d| d.insert_temp(key(), p));
         ui.ctx().request_repaint();
     }
+}
+
+/// This frame's trackpad scrolling (fingers on it, not the coasting after): each event's phase and
+/// how far it moved the content down (natural scrolling).
+fn trackpad(ui: &Ui) -> Vec<(egui::TouchPhase, f32)> {
+    ui.input(|i| {
+        i.events
+            .iter()
+            .filter_map(|e| match e {
+                egui::Event::MouseWheel { source: egui::MouseWheelSource::Trackpad, phase, delta, unit, .. } => {
+                    let dy = if *unit == egui::MouseWheelUnit::Point { delta.y } else { 0.0 };
+                    Some((*phase, dy))
+                }
+                _ => None,
+            })
+            .collect()
+    })
+}
+
+/// How far a trackpad pull is after the fingers moved the content `dy` down: it grows only
+/// with the list at its top, and scrolling back into the list takes it away.
+fn pulled_on(down: f32, dy: f32, top: bool) -> f32 {
+    if top { (down + dy).max(0.0) } else { 0.0 }
 }
 
 /// Send/Receive for what the list shows: every account for a list of all of them, else the

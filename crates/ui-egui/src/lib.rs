@@ -1650,6 +1650,9 @@ pub struct MailApp {
     /// The ribbon's tabs are shown (on by default). Off on iPad, whose menu bar has the menus:
     /// the ribbon is one row of the main tab's commands, or of the message being written.
     pub tab_strip: bool,
+    /// Pulling the message list down with a trackpad's two fingers refreshes it, as a finger on
+    /// the screen does (iPad; off by default: a computer's own mail programs have no such pull).
+    pub trackpad_pull: bool,
     /// Open account setup when the app starts on a mailbox nobody has set up yet (the host turns
     /// this on for an ordinary start; not for the sample or a mailbox named on the command line).
     pub offer_setup: bool,
@@ -1905,6 +1908,7 @@ impl MailApp {
             data_removed: false,
             autosave: true,
             tab_strip: true,
+            trackpad_pull: false,
             offer_setup: false,
             offer_graph_switch: false,
             graph_switch_shown: Default::default(),

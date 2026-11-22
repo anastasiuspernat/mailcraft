@@ -24,3 +24,17 @@ fn a_list_of_every_account_refreshes_them_all_and_a_folder_its_own_account() {
     s.run("folder.select", &json!({"id": inbox})).unwrap();
     assert_eq!(target(&s), Some(second));
 }
+
+#[test]
+fn a_trackpad_pull_grows_only_at_the_top_and_scrolling_back_takes_it_away() {
+    // Fingers drawing the content down past the top pull it.
+    let mut down = 0.0;
+    for _ in 0..8 {
+        down = pulled_on(down, 10.0, true);
+    }
+    assert!(down >= PULL_TO_REFRESH);
+    // Drawn back up, the pull shrinks and never goes below none.
+    assert_eq!(pulled_on(down, -500.0, true), 0.0);
+    // Away from the top there is no pull.
+    assert_eq!(pulled_on(down, 10.0, false), 0.0);
+}

@@ -1,1 +1,1 @@
-- iPad: pull the message list down to refresh it, as in Apple's Mail: every account in All Inboxes, else the account of the folder you are in.
+- iPad: pull the message list down to refresh it, as in Apple's Mail: every account in All Inboxes, else the account of the folder you are in. A finger on the screen pulls it, and so do a trackpad's two fingers.

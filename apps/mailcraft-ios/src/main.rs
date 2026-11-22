@@ -397,6 +397,8 @@ mod ios {
                 app.autosave = kept;
                 // The menu bar has the menus: the ribbon is one row of commands, without tabs.
                 app.tab_strip = false;
+                // A trackpad's two fingers pull the list down to refresh it, as a finger does.
+                app.trackpad_pull = true;
                 if let Some(path) = app.session.path.clone() {
                     app.services.saver = saver(&cc.egui_ctx, &path);
                 }
