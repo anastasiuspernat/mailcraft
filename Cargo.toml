@@ -52,7 +52,7 @@ encoding_rs = "0.8"
 # every platform and in the browser) and the system's own zone. Unlicense OR MIT; the database is
 # in the public domain. Used by `mailcraft-time` only, which wraps it (`Zone`); calendar maths is
 # our own.
-jiff = { version = "0.2.38", default-features = false, features = ["std", "tz-system", "tzdb-bundle-always"] }
+jiff = { version = "1.0.1", default-features = false, features = ["std", "tz-system", "tzdb-bundle-always"] }
 
 # Unicode's word boundaries (UAX #29), for Review › Word Count (`mailcraft-engine`). MIT OR
 # Apache-2.0, Rust throughout, builds for the browser; already in the tree (egui runs on it).
@@ -104,8 +104,8 @@ eframe = { version = "0.37", default-features = false }
 egui_kittest = "0.37"
 # The font reader egui uses, at egui's version: a system font is opened with it before egui is
 # given it, so that egui never meets one it cannot open (#217). Already in the tree through epaint.
-skrifa = "0.48"
-rfd = "0.17"
+skrifa = "0.50"
+rfd = "0.18"
 arboard = { version = "3.7", default-features = false }
 
 [workspace.lints.rust]
